@@ -1,0 +1,358 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Lesson 1 — How Telegram Actually Delivers Messages to Your Code</title>
+<style>
+  :root {
+    --ink: #1a1a1a;
+    --muted: #5c5c5c;
+    --line: #e3e0d8;
+    --paper: #fdfcf9;
+    --accent: #0f6f5c;
+    --accent-soft: #e6f2ef;
+    --wrong: #b3341f;
+    --wrong-soft: #fbe9e6;
+    --code-bg: #f4f2ec;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --ink: #ece9e2;
+      --muted: #a8a49a;
+      --line: #3a3833;
+      --paper: #171613;
+      --accent: #57c6ab;
+      --accent-soft: #16302b;
+      --wrong: #e88a78;
+      --wrong-soft: #331e1a;
+      --code-bg: #211f1a;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: -apple-system, "Segoe UI", Georgia, serif;
+    line-height: 1.65;
+  }
+  .wrap {
+    max-width: 720px;
+    margin: 0 auto;
+    padding: 3rem 1.5rem 6rem;
+  }
+  .kicker {
+    font-family: -apple-system, "Segoe UI", sans-serif;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    font-size: 0.75rem;
+    color: var(--accent);
+    font-weight: 600;
+  }
+  h1 {
+    font-size: 1.9rem;
+    line-height: 1.25;
+    margin: 0.4rem 0 0.5rem;
+  }
+  .lede {
+    color: var(--muted);
+    font-size: 1.05rem;
+    margin-bottom: 2.5rem;
+  }
+  h2 {
+    font-family: -apple-system, "Segoe UI", sans-serif;
+    font-size: 1.15rem;
+    margin-top: 2.8rem;
+    padding-bottom: 0.4rem;
+    border-bottom: 1px solid var(--line);
+  }
+  p { font-size: 1rem; }
+  .callout {
+    background: var(--accent-soft);
+    border-left: 3px solid var(--accent);
+    padding: 0.9rem 1.1rem;
+    border-radius: 4px;
+    margin: 1.2rem 0;
+    font-size: 0.95rem;
+  }
+  .callout strong { color: var(--accent); }
+  code {
+    font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
+    background: var(--code-bg);
+    padding: 0.1em 0.4em;
+    border-radius: 4px;
+    font-size: 0.88em;
+  }
+  pre {
+    background: var(--code-bg);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 1rem 1.1rem;
+    overflow-x: auto;
+    font-size: 0.85rem;
+  }
+  pre code { background: none; padding: 0; }
+  .file-tag {
+    font-family: -apple-system, "Segoe UI", sans-serif;
+    font-size: 0.72rem;
+    color: var(--muted);
+    letter-spacing: 0.02em;
+    margin-bottom: 0.3rem;
+    display: block;
+  }
+  .diagram {
+    font-family: -apple-system, "Segoe UI", sans-serif;
+    font-size: 0.9rem;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 1.2rem;
+    margin: 1.2rem 0;
+    background: var(--code-bg);
+  }
+  .diagram .row { display: flex; align-items: center; gap: 0.6rem; margin: 0.4rem 0; }
+  .diagram .box { border: 1px solid var(--line); border-radius: 6px; padding: 0.4rem 0.7rem; background: var(--paper); white-space: nowrap; }
+  .diagram .arrow { color: var(--muted); }
+  table { width: 100%; border-collapse: collapse; font-size: 0.92rem; margin: 1rem 0; }
+  th, td { text-align: left; padding: 0.5rem 0.7rem; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { font-family: -apple-system, "Segoe UI", sans-serif; font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); }
+  .quiz {
+    margin-top: 1.2rem;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 1.3rem 1.4rem;
+    background: var(--code-bg);
+  }
+  .quiz p.q { font-family: -apple-system, "Segoe UI", sans-serif; font-weight: 600; margin: 0 0 0.9rem; }
+  .quiz .opt {
+    display: block;
+    width: 100%;
+    text-align: left;
+    font-family: -apple-system, "Segoe UI", sans-serif;
+    font-size: 0.92rem;
+    padding: 0.6rem 0.8rem;
+    margin-bottom: 0.5rem;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    background: var(--paper);
+    color: var(--ink);
+    cursor: pointer;
+  }
+  .quiz .opt:hover { border-color: var(--accent); }
+  .quiz .opt.correct { background: var(--accent-soft); border-color: var(--accent); }
+  .quiz .opt.wrong { background: var(--wrong-soft); border-color: var(--wrong); }
+  .feedback {
+    font-family: -apple-system, "Segoe UI", sans-serif;
+    font-size: 0.88rem;
+    margin-top: 0.6rem;
+    padding: 0.6rem 0.8rem;
+    border-radius: 6px;
+    display: none;
+  }
+  .feedback.show { display: block; }
+  .feedback.correct { background: var(--accent-soft); color: var(--accent); }
+  .feedback.wrong { background: var(--wrong-soft); color: var(--wrong); }
+  .nav {
+    margin-top: 3.5rem;
+    padding-top: 1.2rem;
+    border-top: 1px solid var(--line);
+    font-family: -apple-system, "Segoe UI", sans-serif;
+    font-size: 0.88rem;
+    color: var(--muted);
+  }
+  .nav a { color: var(--accent); text-decoration: none; }
+  .nav a:hover { text-decoration: underline; }
+  .ask {
+    margin-top: 2rem;
+    font-family: -apple-system, "Segoe UI", sans-serif;
+    font-size: 0.88rem;
+    color: var(--muted);
+    font-style: italic;
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="kicker">Lesson 1 · Telegram Bots on Serverless</div>
+  <h1>How Telegram Actually Delivers Messages to Your Code</h1>
+  <p class="lede">
+    Telegram has your user's message. Your code needs it. There are exactly two ways to bridge
+    that gap — and which one you use isn't a style preference, it's forced by where your code runs.
+    This lesson uses the real files from w2tAgent's Telegram bot to show both.
+  </p>
+
+  <h2>The core problem</h2>
+  <p>
+    Telegram's servers hold every update — messages, button taps, everything — in a queue tied to
+    your bot's token. Your job is to get those updates out of that queue and into your handler code.
+    Telegram gives you two APIs for this, and a working bot always uses exactly one of them at a time.
+  </p>
+
+  <h2>Option one: long polling</h2>
+  <p>
+    Your code repeatedly calls Telegram's <code>getUpdates</code> method and asks "anything new?".
+    Telegram holds the connection open — it doesn't answer immediately — and responds the instant
+    something arrives, or after a timeout if nothing did. The moment you get a response, you ask again.
+    This requires something that keeps running and keeps asking, forever.
+  </p>
+  <div class="diagram">
+    <div class="row"><span class="box">your process</span><span class="arrow">→ "anything new?" →</span><span class="box">Telegram</span></div>
+    <div class="row"><span class="box">your process</span><span class="arrow">← (waits… then) an update →</span><span class="box">Telegram</span></div>
+    <div class="row"><span class="box">your process</span><span class="arrow">→ "anything new?" (again, immediately) →</span><span class="box">Telegram</span></div>
+  </div>
+  <p>In this repo, that loop is exactly what <code>scripts/bot-dev.ts</code> starts:</p>
+  <span class="file-tag">scripts/bot-dev.ts</span>
+  <pre><code>const bot = createBot(env.telegramDevBotToken)
+
+bot.start({
+  onStart: () => console.log('Dev bot long-polling started. Ctrl+C to stop.'),
+})</code></pre>
+  <p>
+    <code>bot.start()</code> is grammY's long-polling loop — it never returns while the process is alive.
+    That's why you run it with <code>npm run bot:dev</code> in its own terminal window: it needs a
+    process that just sits there.
+  </p>
+
+  <h2>Option two: webhooks</h2>
+  <p>
+    You tell Telegram, once, "here is a URL — push updates to it the moment they happen," via a call
+    to <code>setWebhook</code>. From then on, Telegram makes an HTTPS POST request to that URL every
+    time your bot has something new. Nothing needs to keep running between updates — your code only
+    has to exist at the moment a request actually arrives.
+  </p>
+  <div class="diagram">
+    <div class="row"><span class="box">Telegram</span><span class="arrow">→ HTTPS POST update →</span><span class="box">your webhook URL</span></div>
+    <div class="row"><span class="box">your webhook URL</span><span class="arrow">→ 200 OK →</span><span class="box">Telegram</span></div>
+    <div class="row"><span class="box">(nothing happens until the next update)</span></div>
+  </div>
+  <p>In production, that URL is a Nitro server route:</p>
+  <span class="file-tag">server/api/telegram/webhook/[secret].post.ts</span>
+  <pre><code>export default defineEventHandler(async (event) => {
+  const secret = getRouterParam(event, 'secret')
+  if (!env.telegramWebhookSecret || secret !== env.telegramWebhookSecret) {
+    throw createError({ statusCode: 404, statusMessage: 'Not found' })
+  }
+  if (!handler) {
+    handler = webhookCallback(createBot(env.telegramBotToken), 'std/http')
+  }
+  return handler(toWebRequest(event))
+})</code></pre>
+  <p>
+    <code>webhookCallback</code> is grammY's adapter — it takes the incoming web <code>Request</code>,
+    feeds it to the bot as an update, and turns the bot's reaction into a <code>Response</code>.
+    No polling loop anywhere; this function only does anything when Telegram calls it.
+  </p>
+
+  <h2>Why Vercel forces this choice</h2>
+  <p>
+    A Vercel serverless function is not a program that stays running. It wakes up to handle one
+    request, sends a response, and is free to disappear afterward. That's structurally incompatible
+    with long polling, which needs an unbroken loop holding a connection open indefinitely — there is
+    no "keep running in the background" on a platform built around functions that start, respond, and
+    stop.
+  </p>
+  <div class="callout">
+    <strong>The rule of thumb:</strong> if your bot's backend is a serverless function (Vercel, AWS
+    Lambda, Cloudflare Workers…), you use a webhook in production. Long polling only works where you
+    control an always-on process — a VPS, a container, or your own laptop during development.
+  </div>
+  <p>
+    That's exactly the split in this repo: <code>bot-dev.ts</code> long-polls from your machine
+    because you, a human, are running <code>npm run bot:dev</code> and it stays open until you press
+    <code>Ctrl+C</code>. The webhook route runs on Vercel because Vercel functions can't do the other
+    thing.
+  </p>
+
+  <h2>Same brain, two bodies</h2>
+  <p>
+    The part worth internalizing — and reusing in your next bot — isn't the delivery mechanism itself,
+    it's how w2tAgent keeps the two mechanisms from duplicating any logic. All the actual behavior
+    (what <code>/start</code> does, what a bare text message means, who's allowed to talk to the bot)
+    lives in one function, <code>createBot</code>, that knows nothing about HOW an update arrived:
+  </p>
+  <span class="file-tag">server/telegram/bot.ts</span>
+  <pre><code>export function createBot(token: string): Bot {
+  const bot = new Bot(token)
+  bot.command('start', async (ctx) => { /* … */ })
+  bot.command('backlog', async (ctx) => { /* … */ })
+  bot.on('message:text', async (ctx) => { /* … */ })
+  return bot
+}</code></pre>
+  <p>
+    <code>bot-dev.ts</code> and the webhook route are just two different adapters plugged into that
+    same brain — one feeds it updates via long polling, the other via HTTP requests. If you ever find
+    yourself writing bot logic twice, once "for local" and once "for prod," that's the signal to pull
+    it out into a shared <code>createBot</code>-style function like this one.
+  </p>
+
+  <h2>The registration handshake</h2>
+  <p>
+    Telegram allows exactly <strong>one</strong> webhook URL per bot token at a time. Registering a
+    new one silently replaces the old one — which is dangerous on a platform like Vercel where every
+    preview deploy gets its own throwaway URL. If a preview deploy registered itself as the webhook,
+    it would steal every incoming message from production the moment someone opened that preview.
+  </p>
+  <p>w2tAgent guards against this with an explicit environment check:</p>
+  <span class="file-tag">server/plugins/register-webhook.ts</span>
+  <pre><code>export default defineNitroPlugin(async () => {
+  if (env.vercelEnv !== 'production') return
+  // …call bot.api.setWebhook(url) only when this really is production…
+})</code></pre>
+  <p>
+    Vercel sets <code>VERCEL_ENV</code> to <code>production</code>, <code>preview</code>, or
+    <code>development</code> automatically — no configuration needed. There's also a manual escape
+    hatch, <code>npm run set-webhook</code>, for the moments you need to (re)point the webhook by
+    hand rather than waiting for a fresh deploy to trigger it. <code>setWebhook</code> is idempotent:
+    calling it again with the same URL is a harmless no-op, so there's no danger in re-running it.
+  </p>
+
+  <div class="quiz" id="quiz1">
+    <p class="q">Quick check — you're building a brand new Telegram bot on AWS Lambda (also serverless, like Vercel). What should handle production delivery?</p>
+    <button class="opt" data-correct="false">Long polling, since it's simpler to set up</button>
+    <button class="opt" data-correct="true">A webhook, since Lambda functions don't stay running between invocations</button>
+    <button class="opt" data-correct="false">Either — it genuinely doesn't matter on serverless</button>
+    <div class="feedback"></div>
+  </div>
+
+  <div class="quiz" id="quiz2">
+    <p class="q">You just deployed a preview branch of a bot to Vercel for review. What should <em>not</em> happen?</p>
+    <button class="opt" data-correct="false">The preview URL should be reachable at all</button>
+    <button class="opt" data-correct="true">The preview deploy's cold start should call setWebhook and overwrite production's webhook URL</button>
+    <button class="opt" data-correct="false">The preview deploy should use a different Firestore project</button>
+    <div class="feedback"></div>
+  </div>
+
+  <p class="ask">
+    Something here unclear, or want to go deeper on a piece — grammY's middleware system, how
+    <code>webhookCallback</code> actually converts a request, or why state can't live in the function's
+    memory? Just ask your teacher (me) directly, any time.
+  </p>
+
+  <div class="nav">
+    Reference: <a href="../reference/webhook-vs-polling-cheatsheet.html">Webhook vs. long polling — cheat sheet</a><br />
+    Next: <a href="./0002-where-bot-state-lives.html">Lesson 2 — Where bot state lives (and why your function forgets)</a>
+  </div>
+
+</div>
+<script>
+  document.querySelectorAll('.quiz').forEach((quiz) => {
+    const feedback = quiz.querySelector('.feedback');
+    quiz.querySelectorAll('.opt').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const correct = btn.dataset.correct === 'true';
+        quiz.querySelectorAll('.opt').forEach((b) => { b.classList.remove('correct', 'wrong'); b.disabled = true; });
+        btn.classList.add(correct ? 'correct' : 'wrong');
+        if (!correct) {
+          quiz.querySelector('.opt[data-correct="true"]').classList.add('correct');
+        }
+        feedback.textContent = correct
+          ? 'Right. Serverless = no persistent loop = webhook.'
+          : 'Not quite — the highlighted option is correct. A serverless function only exists for the duration of one request; it cannot hold a long-polling connection open.';
+        feedback.classList.add('show', correct ? 'correct' : 'wrong');
+      }, { once: true });
+    });
+  });
+</script>
+</body>
+</html>

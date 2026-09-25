@@ -1,0 +1,162 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lesson 1 — Seam direction and the grading rule (X-64)</title>
+<style>
+  :root { --ink:#1e293b; --muted:#64748b; --accent:#047857; --red:#b91c1c; --amber:#b45309; --bg:#fafaf9; --card:#fff; --line:#e2e8f0; }
+  * { box-sizing:border-box; }
+  body { margin:0; font:16px/1.65 Georgia, 'Times New Roman', serif; color:var(--ink); background:var(--bg); }
+  main { max-width:46rem; margin:0 auto; padding:2rem 1.25rem 4rem; }
+  h1 { font-size:1.65rem; line-height:1.25; margin:0 0 .3rem; }
+  h2 { font-size:1.2rem; margin:2.2rem 0 .6rem; border-bottom:1px solid var(--line); padding-bottom:.3rem; }
+  .meta { color:var(--muted); font-size:.85rem; margin-bottom:1.5rem; }
+  .mission { background:#ecfdf5; border-left:3px solid var(--accent); padding:.6rem .9rem; font-size:.9rem; }
+  code { font-family:ui-monospace, Consolas, monospace; font-size:.85em; background:#eef2f7; padding:.05em .3em; border-radius:3px; }
+  pre { background:#0f172a; color:#e2e8f0; padding:.9rem 1rem; border-radius:8px; overflow-x:auto; font-size:.8rem; line-height:1.5; }
+  pre code { background:none; color:inherit; padding:0; }
+  .boxes { display:flex; flex-wrap:wrap; gap:.75rem; align-items:stretch; margin:1rem 0; }
+  .box { flex:1 1 12rem; background:var(--card); border:1.5px solid var(--ink); border-radius:8px; padding:.6rem .8rem; font-size:.85rem; }
+  .box h4 { margin:0 0 .3rem; font-size:.8rem; text-transform:uppercase; letter-spacing:.05em; }
+  .box.bad { border-color:var(--red); }
+  .box.deep { background:#0f172a; color:#e2e8f0; border-color:#0f172a; }
+  .arrow { text-align:center; font-size:.85rem; margin:.2rem 0; }
+  .arrow.bad { color:var(--red); font-weight:bold; }
+  .note { font-size:.85rem; color:var(--muted); }
+  .q { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:1rem 1.1rem; margin:1.2rem 0; }
+  .q p.stem { margin:.1rem 0 .7rem; font-weight:bold; }
+  .q label { display:block; padding:.45rem .6rem; margin:.3rem 0; border:1px solid var(--line); border-radius:7px; cursor:pointer; font-size:.92rem; background:#fff; }
+  .q label:hover { border-color:var(--accent); }
+  .q .fb { display:none; margin-top:.7rem; padding:.6rem .8rem; border-radius:7px; font-size:.9rem; }
+  .q.answered .fb.show { display:block; }
+  .fb.ok { background:#ecfdf5; border-left:3px solid var(--accent); }
+  .fb.no { background:#fef2f2; border-left:3px solid var(--red); }
+  .q.answered label { pointer-events:none; opacity:.75; }
+  .q.answered label.chosen { opacity:1; border-width:2px; }
+  .q.answered label.right { border-color:var(--accent); background:#ecfdf5; opacity:1; }
+  .q.answered label.chosen.wrong { border-color:var(--red); background:#fef2f2; }
+  #score { display:none; margin-top:1.5rem; padding:1rem; border-radius:10px; background:#0f172a; color:#e2e8f0; text-align:center; font-size:1.05rem; }
+  .foot { margin-top:3rem; padding-top:1rem; border-top:1px solid var(--line); font-size:.85rem; color:var(--muted); }
+  a { color:var(--accent); }
+</style>
+</head>
+<body>
+<main>
+  <h1>Seam direction and the grading rule</h1>
+  <p class="meta">Lesson 0001 · ~15 minutes · worked example: Linear <a href="https://linear.app/alexander-anisimov/issue/X-64/ica-grading-to-exercises">X-64</a> · vocabulary: <a href="../reference/architecture-design-glossary.html">architecture glossary</a></p>
+
+  <p class="mission"><b>Why this lesson:</b> your mission is to spot structural problems and predict refactor shapes before reading a spec. X-64 is the cleanest possible specimen: one rule, three copies, one arrow pointing the wrong way. If you can read this one like an architect, candidates #3–#6 follow the same moves at larger scale.</p>
+
+  <h2>1 · One fact, two computers</h2>
+  <p>Start with the failure story, not the theory. A user finishes their last exercise in Telegram. One second <em>before</em> that tap, the Ladder page computed their green dot from the live <code>PracticeDay</code> document, using a function in <code>ladder.ts</code>. One second <em>after</em>, the <code>PracticeDay</code> is deleted and the same dot is computed from a durable <code>Result</code> document — which was written by a <em>different</em> function, in <code>practice.ts</code>.</p>
+  <p>Two different functions produce "the same" verdict on either side of one moment. Today they agree. Nothing but human care keeps them agreeing. If they ever drift, the user watches a ✓ flip to ✕ at the moment of completion — a bug no typecheck can catch, in the one number the app permanently records.</p>
+  <p>That is the essence of X-64 in one sentence: <b>a rule that exists three times is not a rule; it is three opinions that currently coincide.</b></p>
+
+  <h2>2 · The substrate: what grading actually reads</h2>
+  <p>You cannot judge the architecture without knowing the data. An <a href="../reference/architecture-design-glossary.html#module">module</a> is only deep or shallow relative to what it hides. Grading reads three parallel arrays on each <code>Exercise</code> inside the <code>PracticeDay</code> (Firestore: <code>scopes/{scope}/sessions/practice</code>):</p>
+  <pre><code>targets:      ["beharren", "hund", "laufen"]   // the Triad, normalized forms
+gapTargets:   ["beharren", "laufen", "beharren"] // per blank: whose gap is it
+answers:      ["beharren", null,     "hund"    ] // per blank: what was tapped (or null)</code></pre>
+  <p>The rule (CONTEXT.md: <em>lemma-level grading</em>): a word's verdict is the AND over <em>its</em> gaps. Walk it for <code>beharren</code>: its gaps are index 0 and 2. Gap 0 was answered <code>beharren</code> ✓; gap 2 was answered <code>hund</code> ✗ — so <code>beharren</code> is a <b>miss</b>. <code>laufen</code>'s only gap (index 1) is <code>null</code> — <b>pending</b>. Lemma-level because buttons carry normalized forms: tapping an inflected surface still records the dictionary form, so the comparison never sees inflection.</p>
+
+  <h2>3 · The map: three copies and a wrong-way arrow</h2>
+  <div class="boxes">
+    <div class="box bad"><h4>telegram/practice.ts</h4><code>buildResults</code> — AND-over-gaps as an implication inside <code>every()</code>. Writes durable Results at Completion. Also exports <code>isAnswered</code> "for the web Ladder page" (its comment apologises).</div>
+    <div class="box bad"><h4>pipeline/ladder.ts</h4><code>statusFromExercises</code> — the same AND, written differently (collect indices, then check), plus a third state <code>pending</code>. Its comment: <em>"mirrors practice.ts's buildResults."</em></div>
+  </div>
+  <p class="arrow bad">ladder.ts ──imports isAnswered──▶ telegram/practice.ts &nbsp;⚠ wrong direction</p>
+  <p>Why is the direction wrong and not merely untidy? Two surfaces — the web review page and the Telegram bot — are <em>siblings</em>. A <a href="../reference/architecture-design-glossary.html#seam">seam</a> between siblings must not be crossed; both should depend downward on shared core. Concretely: <code>practice.ts</code> imports grammY (the bot framework) at the top of the file, so this one-line import makes every <code>GET /api/ladder</code> — a read-only web request — transitively load bot-framework code. Direction decides what a module drags along.</p>
+  <p>And spot the tell you already know from X-62: a <b>"mirrors X" comment is the codebase confessing a module is missing</b>. Someone knew the rule had two homes and chose documentation over an interface. Comments cannot enforce agreement; interfaces can.</p>
+
+  <h2>4 · The shape of the fix</h2>
+  <div class="boxes">
+    <div class="box deep"><h4>exercises/grade.ts (new)</h4><code>wordStatus(exercise, target)</code> — THE rule, once.<br><code>isAnswered</code>, <code>statusFromExercises</code>, <code>buildResults</code> — all <em>derived</em> from it. Imports domain types only. ~40 lines.</div>
+    <div class="box"><h4>practice.ts / ladder.ts</h4>Become consumers. The wrong-way import is deleted; grammY leaves the web path. <code>ladder.vue</code> untouched (a type re-export preserves its import).</div>
+  </div>
+  <p>The load-bearing idea is <a href="../reference/architecture-design-glossary.html#construction"><b>consistent by construction</b></a>: after the refactor, the dot on the web and the Result in Firestore cannot disagree, because both are the same function call. Before, they were consistent <em>by inspection</em> — a property you re-earn manually on every edit and lose silently.</p>
+  <p>Equally important is what <b>stays behind</b>: the per-gap ✅/❌ in the reveal rendering is one comparison at presentation grain. Hauling it into <code>grade.ts</code> would be abstraction for its own sake. The test is: does the code <em>encode the rule</em> (move it) or <em>display a result</em> (leave it)?</p>
+
+  <h2>5 · Check yourself</h2>
+  <p class="note">Answer each; feedback is instant. These test whether the vocabulary is <em>yours</em> now — tell the agent your score.</p>
+
+  <div class="q" data-a="1">
+    <p class="stem">Q1. Using the arrays in section 2 — the day ends with <code>answers: ["beharren", "laufen", "beharren"]</code>. What does <code>hund</code> grade as?</p>
+    <label><input type="radio" name="q1"> miss — it was never tapped correctly anywhere</label>
+    <label><input type="radio" name="q1"> correct — it has zero gaps, and the AND over an empty set is true</label>
+    <label><input type="radio" name="q1"> pending — it has no answered gaps</label>
+    <div class="fb ok">Yes. <code>hund</code> appears in <code>targets</code> but owns no gap in <code>gapTargets</code> — the vacuous AND grades it correct. X-64's spec preserves this edge case deliberately; both current implementations already behave this way. Noticing empty-set behavior is exactly the kind of thing a single shared predicate makes checkable once.</div>
+    <div class="fb no">Look at <code>gapTargets</code>: <code>hund</code> owns no gap at all. The rule is "AND over <em>its</em> gaps" — and an AND over zero things is true (the vacuous AND). So: correct. Both current implementations agree on this, and the X-64 spec pins it down as a preserved edge case.</div>
+  </div>
+
+  <div class="q" data-a="2">
+    <p class="stem">Q2. Why is <code>ladder.ts → telegram/practice.ts</code> the <em>wrong direction</em>, in one principle?</p>
+    <label><input type="radio" name="q2"> Imports should always point from small files to large files</label>
+    <label><input type="radio" name="q2"> Web code must never import server code</label>
+    <label><input type="radio" name="q2"> Sibling surfaces must depend downward on shared core, never sideways on each other</label>
+    <div class="fb ok">Right. The web page and the bot are peers; neither is "under" the other. Sideways dependencies smuggle one surface's baggage (here: grammY) into the other and make the borrowed module un-deletable. Both should look down at <code>exercises/grade.ts</code>.</div>
+    <div class="fb no">File size and web-vs-server aren't the principle (both files are server-side!). The rule is about <em>siblings</em>: the web review surface and the Telegram surface are peers, and peers must depend downward on shared core — never sideways on each other. Sideways is how grammY ends up loading on a read-only web request.</div>
+  </div>
+
+  <div class="q" data-a="0">
+    <p class="stem">Q3. Run the deletion test on <code>statusFromExercises</code> (as it exists today, pre-refactor). What happens if you delete it?</p>
+    <label><input type="radio" name="q3"> Its logic concentrates: the Ladder must call the same predicate the Results use — the signal that a shared module is the right home</label>
+    <label><input type="radio" name="q3"> The Ladder page loses the pending state forever, so it can't be deleted</label>
+    <label><input type="radio" name="q3"> Nothing — it's dead code already</label>
+    <div class="fb ok">Exactly. Deleting it forces the question "so where does the Ladder get verdicts?" and the only good answer is "from the same place Results come from" — complexity concentrates into one module instead of scattering. That "yes, concentrates" is the deletion test's green light. (Pending survives: the shared <code>wordStatus</code> expresses it.)</div>
+    <div class="fb no">It's live code (the dots depend on it), and pending isn't lost — the shared predicate expresses it as a third return value. The point of the deletion test: removing the duplicate <em>concentrates</em> the rule into one home rather than scattering it. Concentration = delete and deepen; scattering = leave it.</div>
+  </div>
+
+  <div class="q" data-a="2">
+    <p class="stem">Q4. After X-64, someone proposes partial credit: a word with 2 of 3 gaps right scores 0.5. Which files change?</p>
+    <label><input type="radio" name="q4"> practice.ts and ladder.ts — they own the two verdict paths</label>
+    <label><input type="radio" name="q4"> Only the Firestore schema — Results gain a score field, code is untouched</label>
+    <label><input type="radio" name="q4"> exercises/grade.ts for the rule itself, plus whichever consumers must display or store the new value</label>
+    <div class="fb ok">Right — and notice the split: the <em>rule</em> is a one-file change (that's locality), while consumers change only where the new value must surface (a score in Results, a new dot style). Before X-64 this was a three-file synchronized edit with silent-drift risk. Leverage = the rule change propagates to all consumers for free.</div>
+    <div class="fb no">After the refactor practice.ts and ladder.ts no longer own any verdict logic — they consume it. The rule changes in exactly one place, <code>exercises/grade.ts</code>; consumers change only where the new value must be displayed or stored. That one-file-for-the-rule property is the payoff X-64 buys.</div>
+  </div>
+
+  <div class="q" data-a="1">
+    <p class="stem">Q5. The reveal's per-gap ✅/❌ (<code>answer === gapTargets[gap]</code>, one line in the Telegram renderer) — move it into <code>grade.ts</code>?</p>
+    <label><input type="radio" name="q5"> Yes — it compares answers to targets, so it's grading and must live with the rule</label>
+    <label><input type="radio" name="q5"> No — it displays a per-gap result at presentation grain; it doesn't encode the word-level rule</label>
+    <label><input type="radio" name="q5"> Yes, but only once a second surface needs it</label>
+    <div class="fb ok">Right, and this is the judgment call that separates "applies the vocabulary" from "applies it mechanically". Not everything touching answers is the domain rule. The word-level AND is a rule with three consumers; the gap-level glyph is one surface showing one comparison. X-64's DEC-4 records exactly this. (Option three has real logic too — "two adapters justify a seam" — but here there's no rule to share, so the count never matters.)</div>
+    <div class="fb no">Tempting — it does compare answers to targets. But the test is: does it <em>encode the domain rule</em> (the word-level AND with three consumers) or <em>display a result</em> (one comparison, one surface, presentation grain)? This one displays. Moving it would be abstraction for its own sake — X-64's DEC-4 records the deliberate choice to leave it inline.</div>
+  </div>
+
+  <div id="score"></div>
+
+  <div class="foot">
+    <p><b>Ask your teacher.</b> Anything unclear — vacuous AND, why grammY loading matters, what "presentation grain" means — ask the agent in the chat; that's what it's for. Good follow-up: "show me the actual <code>every()</code> line and translate the implication into plain words."</p>
+    <p>Related: <a href="../reference/architecture-design-glossary.html">architecture glossary</a> · <a href="../reference/telegram-entity-glossary.html">Telegram entity glossary</a> (previous course) · X-64 spec in Linear · podcast <code>docs/podcasts/x-64-grading-to-exercises.mp3</code></p>
+    <p>Next lesson candidate: the pure core / I/O shell split (architecture-review candidate #3, the Tick's gate) — a step up from moving a pure rule to <em>extracting</em> one from Firestore-entangled code.</p>
+  </div>
+</main>
+<script>
+  const qs = [...document.querySelectorAll('.q')];
+  let done = 0, right = 0;
+  qs.forEach(q => {
+    const correct = +q.dataset.a;
+    const labels = [...q.querySelectorAll('label')];
+    labels.forEach((lab, i) => lab.querySelector('input').addEventListener('change', () => {
+      q.classList.add('answered');
+      lab.classList.add('chosen');
+      labels[correct].classList.add('right');
+      const ok = i === correct;
+      if (!ok) lab.classList.add('wrong');
+      q.querySelector(ok ? '.fb.ok' : '.fb.no').classList.add('show');
+      done++; if (ok) right++;
+      if (done === qs.length) {
+        const s = document.getElementById('score');
+        s.style.display = 'block';
+        s.textContent = `Score: ${right}/${qs.length}` + (right === qs.length
+          ? ' — the vocabulary is yours. Tell the agent; that unlocks candidate #3.'
+          : right >= 3 ? ' — solid. Re-read the sections behind the misses, then tell the agent your score.'
+          : ' — worth a second pass through sections 3–4 before moving on. Ask the agent to re-explain the misses.');
+      }
+    }));
+  });
+</script>
+</body>
+</html>

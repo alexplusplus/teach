@@ -1,0 +1,321 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Lesson 4 — One Tap, End to End: The Life of a Webhook Request</title>
+<style>
+  :root {
+    --ink: #1a1a1a;
+    --muted: #5c5c5c;
+    --line: #e3e0d8;
+    --paper: #fdfcf9;
+    --accent: #0f6f5c;
+    --accent-soft: #e6f2ef;
+    --wrong: #b3341f;
+    --wrong-soft: #fbe9e6;
+    --code-bg: #f4f2ec;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --ink: #ece9e2;
+      --muted: #a8a49a;
+      --line: #3a3833;
+      --paper: #171613;
+      --accent: #57c6ab;
+      --accent-soft: #16302b;
+      --wrong: #e88a78;
+      --wrong-soft: #331e1a;
+      --code-bg: #211f1a;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--paper); color: var(--ink);
+    font-family: -apple-system, "Segoe UI", Georgia, serif; line-height: 1.65;
+  }
+  .wrap { max-width: 720px; margin: 0 auto; padding: 3rem 1.5rem 6rem; }
+  .kicker {
+    font-family: -apple-system, "Segoe UI", sans-serif;
+    text-transform: uppercase; letter-spacing: 0.08em;
+    font-size: 0.75rem; color: var(--accent); font-weight: 600;
+  }
+  h1 { font-size: 1.9rem; line-height: 1.25; margin: 0.4rem 0 0.5rem; }
+  .lede { color: var(--muted); font-size: 1.05rem; margin-bottom: 2.5rem; }
+  h2 {
+    font-family: -apple-system, "Segoe UI", sans-serif;
+    font-size: 1.15rem; margin-top: 2.8rem;
+    padding-bottom: 0.4rem; border-bottom: 1px solid var(--line);
+  }
+  p { font-size: 1rem; }
+  a { color: var(--accent); }
+  ol.steps { font-size: 1rem; padding-left: 1.4rem; }
+  ol.steps li { margin-bottom: 0.55rem; }
+  .callout {
+    background: var(--accent-soft); border-left: 3px solid var(--accent);
+    padding: 0.9rem 1.1rem; border-radius: 4px; margin: 1.2rem 0; font-size: 0.95rem;
+  }
+  .callout strong { color: var(--accent); }
+  code {
+    font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
+    font-size: 0.88em; background: var(--code-bg);
+    padding: 0.1em 0.35em; border-radius: 4px;
+  }
+  pre {
+    background: var(--code-bg); padding: 1rem 1.2rem; border-radius: 8px;
+    overflow-x: auto; font-size: 0.85rem; line-height: 1.55;
+  }
+  pre code { background: none; padding: 0; }
+  .file-tag {
+    display: inline-block;
+    font-family: ui-monospace, Consolas, monospace;
+    font-size: 0.75rem; color: var(--muted);
+    border: 1px solid var(--line); border-radius: 4px;
+    padding: 0.1rem 0.5rem; margin-bottom: -0.4rem;
+  }
+  .diagram {
+    background: var(--code-bg); border-radius: 8px;
+    padding: 1rem 1.2rem;
+    font-family: ui-monospace, Consolas, monospace;
+    font-size: 0.8rem; line-height: 1.9; overflow-x: auto; margin: 1.2rem 0;
+    white-space: pre;
+  }
+  .quiz {
+    border: 1px solid var(--line); border-radius: 10px;
+    padding: 1.2rem 1.4rem; margin: 2rem 0;
+  }
+  .quiz .q {
+    font-family: -apple-system, "Segoe UI", sans-serif;
+    font-weight: 600; font-size: 0.95rem; margin-top: 0;
+  }
+  .quiz .opt {
+    display: block; width: 100%; text-align: left;
+    font-family: -apple-system, "Segoe UI", sans-serif;
+    font-size: 0.92rem; padding: 0.6rem 0.8rem; margin-bottom: 0.5rem;
+    border: 1px solid var(--line); border-radius: 6px;
+    background: var(--paper); color: var(--ink); cursor: pointer;
+  }
+  .quiz .opt:hover { border-color: var(--accent); }
+  .quiz .opt.correct { background: var(--accent-soft); border-color: var(--accent); }
+  .quiz .opt.wrong { background: var(--wrong-soft); border-color: var(--wrong); }
+  .feedback {
+    font-family: -apple-system, "Segoe UI", sans-serif;
+    font-size: 0.88rem; margin-top: 0.6rem;
+    padding: 0.6rem 0.8rem; border-radius: 6px; display: none;
+  }
+  .feedback.show { display: block; }
+  .feedback.correct { background: var(--accent-soft); color: var(--accent); }
+  .feedback.wrong { background: var(--wrong-soft); color: var(--wrong); }
+  .nav {
+    margin-top: 3.5rem; padding-top: 1.2rem; border-top: 1px solid var(--line);
+    font-family: -apple-system, "Segoe UI", sans-serif;
+    font-size: 0.88rem; color: var(--muted);
+  }
+  .nav a { color: var(--accent); text-decoration: none; }
+  .nav a:hover { text-decoration: underline; }
+  .ask {
+    margin-top: 2rem;
+    font-family: -apple-system, "Segoe UI", sans-serif;
+    font-size: 0.88rem; color: var(--muted); font-style: italic;
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="kicker">Lesson 4 · Telegram Bots on Serverless</div>
+  <h1>One Tap, End to End: The Life of a Webhook Request</h1>
+  <p class="lede">
+    You know the entities (<a href="./0003-telegram-entity-model.html">lesson 3</a>) and where
+    their state lives (<a href="./0002-where-bot-state-lives.html">lesson 2</a>). Now follow a
+    single ▶ tap through every hop it makes — because two facts about that journey (replies travel
+    <em>separately</em>, and failures get <em>retried</em>) quietly dictate half the defensive code
+    in this repo, and will dictate it in every bot you build.
+  </p>
+
+  <h2>Warm-up (the question left open in chat)</h2>
+  <div class="quiz" id="quiz0">
+    <p class="q">Dev bot and prod bot share one Firestore project. Both would write <code>telegramLinks/{yourUserId}</code> — same key, since private chat ids equal your user id across all bots. When is that sharing fine, and when does it bite?</p>
+    <button class="opt" data-correct="true">Fine while both link the same chat to the same user (identical docs) — bites on message-keyed state: each bot counts message ids independently, so dev's card #100 and prod's card #100 would fight over <code>sessions/teach-100</code></button>
+    <button class="opt" data-correct="false">Always fine — Firestore serializes concurrent writes, so nothing can conflict</button>
+    <button class="opt" data-correct="false">Always broken — two bots can never safely share one database</button>
+    <div class="feedback" data-why="The pairing doc is naturally idempotent (same key, same content). The trap is one level down: message ids are per-chat counters PER BOT, so two bots produce overlapping ids in 'the same' chat — and any state keyed only by message id can collide. The address that never collides is (bot token, chat id, message id); a shared DB is safe only for state whose key doesn't silently drop the token part."></div>
+  </div>
+
+  <h2>The journey, hop by hop</h2>
+  <p>You tap ▶ on the teach card. Here is everything that happens, in order:</p>
+  <ol class="steps">
+    <li><strong>Your phone → Telegram.</strong> The tap goes to Telegram's servers, which create a
+      callback query, wrap it in an <em>update</em>, and put it on your bot's queue.</li>
+    <li><strong>Telegram → your URL.</strong> Because production registered a webhook, Telegram
+      immediately makes an HTTPS POST to
+      <code>…/api/telegram/webhook/&lt;secret&gt;</code> with that one update as the JSON body
+      (<a href="https://core.telegram.org/bots/webhooks">Marvin's guide</a>).</li>
+    <li><strong>Vercel finds a body to run.</strong> A warm instance if one exists — module scope
+      intact, <code>handler</code> already built — otherwise a cold start: new instance, module
+      code runs from scratch, <code>handler</code> is <code>null</code> again, firebase-admin
+      re-initializes. Cold adds latency; it changes nothing else (lesson 2: everything
+      authoritative is in Firestore precisely so this moment is boring).</li>
+    <li><strong>The transport gate.</strong> Nitro routes to the webhook file; the unguessable
+      path segment is checked first — wrong secret, 404, nobody home.</li>
+    <li><strong>grammY opens the envelope.</strong> <code>webhookCallback</code> parses the update,
+      sees a callback query with data <code>teach:next</code>, and routes to your
+      <code>bot.callbackQuery(TEACH_NEXT, …)</code> handler.</li>
+    <li><strong>Your handler works.</strong> Firestore: read the <code>telegramLink</code> (who is
+      this chat?), read <code>sessions/teach-{messageId}</code> (which card, what cursor?), write
+      the moved cursor back.</li>
+    <li><strong>Outbound calls — separate connections.</strong> <code>editMessageText</code> and
+      <code>answerCallbackQuery</code> are their own HTTPS requests from your function
+      <em>to</em> <code>api.telegram.org</code>, happening mid-handler. They are not part of the
+      webhook exchange at all.</li>
+    <li><strong>The receipt.</strong> Your handler finishes; the route returns <code>200 OK</code>
+      with an empty body. That 200 means exactly one thing to Telegram: <em>“delivered — take it
+      off the queue.”</em></li>
+  </ol>
+
+  <div class="diagram">phone ──tap──► Telegram servers ──(update queued)──┐
+                                                   │ ① inbound: one POST
+                                                   ▼
+                        Vercel ── cold? build handler ── secret gate ── grammY ── your handler
+                                                   │                        │
+                                                   │            ② outbound: separate HTTPS calls
+                                                   │                        ▼
+                                                   │              api.telegram.org
+                                                   │              (editMessageText,
+                                                   │               answerCallbackQuery)
+                                                   ▼
+                        ③ 200 OK (empty) ──► Telegram: "delivered, dequeue it"</div>
+
+  <div class="callout">
+    <strong>The fact people get wrong:</strong> the webhook's 200 response carries no reply text.
+    <code>ctx.reply(…)</code> does not “answer the request” — it opens a brand-new HTTPS call to
+    Telegram's API while the inbound request is still being handled. Inbound and outbound are two
+    independent channels that happen to be active at the same moment. (grammY's docs on the
+    <a href="https://grammy.dev/guide/deployment-types">two deployment types</a> draw the same
+    picture.)
+  </div>
+
+  <h2>What happens when you're slow — or you crash</h2>
+  <p>
+    Telegram treats the webhook like any unreliable postal address: if the POST times out or comes
+    back non-200, <strong>the update is not lost — it's redelivered</strong>, with growing pauses,
+    until your bot finally 200s it (or it expires after a long while). You can see the evidence at
+    any time via <a href="https://core.telegram.org/bots/api#getwebhookinfo"><code>getWebhookInfo</code></a>:
+    <code>pending_update_count</code> and <code>last_error_message</code> are Telegram telling you
+    "I'm holding mail you haven't accepted."
+  </p>
+  <p>
+    Sounds friendly — nothing is dropped! But look at it from your handler's side. A crash
+    <em>after</em> step 6's Firestore write but <em>before</em> step 8's 200 means Telegram sends
+    the <em>same tap again</em> — and your handler runs a second time against state it already
+    mutated. Redelivery turns every webhook handler into code that must tolerate running twice.
+  </p>
+
+  <h2>Idempotency: this repo's answer, everywhere you look</h2>
+  <p>
+    That's the "why" behind defensive lines you may have already skimmed past. Three examples,
+    all real:
+  </p>
+  <span class="file-tag">server/telegram/practice.ts</span>
+  <pre><code>// …anything that doesn't match the authoritative state — a
+// stale message, a replayed tap, an out-of-turn gap — is a safe no-op.</code></pre>
+  <p>
+    A redelivered <code>ans:2:1:0</code> finds gap 1 already filled in the
+    <code>PracticeDay</code> and does nothing. The tap is validated <em>against stored truth</em>,
+    not trusted on arrival — lesson 2's authoritative state doing double duty as a replay shield.
+  </p>
+  <span class="file-tag">server/domain/pipeline.ts</span>
+  <pre><code>// The delete precondition makes a double-fired completion
+// (duplicate webhook delivery) fail outright instead of
+// writing Results twice.</code></pre>
+  <p>
+    The nastiest case — the day-completing tap delivered twice — is answered at the database
+    level: the completion batch requires the <code>PracticeDay</code> doc to still exist to delete
+    it, so the second run fails cleanly instead of double-writing your Results. And the 🔁 retry
+    button re-runs the <em>whole tick</em> safely for the same reason: the tick's gate (one per
+    UTC day, must-be-completed) makes a duplicate attempt a polite refusal, not a double pipeline.
+  </p>
+  <div class="callout">
+    <strong>The design rule to carry into your next bot:</strong> never make a webhook handler's
+    correctness depend on running exactly once. Validate every incoming event against authoritative
+    state, and guard "exactly-once" writes with a database-level precondition. If a handler is safe
+    to run twice, Telegram's redelivery becomes a free reliability feature instead of a bug source.
+  </div>
+
+  <h2>Why speed matters (and this repo's one slow spot)</h2>
+  <p>
+    Two clocks are ticking while your handler runs: Telegram's patience with the POST, and your
+    platform's function timeout (generous on Vercel — minutes — so Telegram's is the one that
+    binds). The practical rule from
+    <a href="https://core.telegram.org/bots/webhooks">Telegram's webhook guide</a>: answer
+    promptly; do heavy work elsewhere. Most of this bot's handlers are a few Firestore reads and
+    one edit — comfortably fast. The exception is instructive: the 🔁 retry button runs the entire
+    tick <em>inside a callback handler</em> — several LLM calls, easily many seconds. If that ever
+    exceeds Telegram's patience, the update gets redelivered mid-tick… and the answer to "isn't
+    that a disaster?" is the same gate again: the second delivery hits
+    <code>already-ticked-today</code> (or the in-flight day's lock conditions) and no-ops. The
+    architecture doesn't try to be fast there — it arranges to be <em>safe while slow</em>.
+  </p>
+
+  <h2>Check the journey</h2>
+
+  <div class="quiz" id="quiz1">
+    <p class="q">1 · Your handler calls <code>ctx.reply('✓ added Hund')</code>. Where does that text physically travel?</p>
+    <button class="opt" data-correct="false">In the body of the 200 response to Telegram's POST — that's what the response is for</button>
+    <button class="opt" data-correct="true">In a separate outbound HTTPS request from your function to api.telegram.org, made while the inbound request is still open</button>
+    <button class="opt" data-correct="false">Directly to the user's phone over the connection Telegram opened</button>
+    <div class="feedback" data-why="Inbound and outbound are independent channels. The 200 is an empty receipt meaning 'dequeue this update'; every message your bot sends is its own API call to Telegram, which then delivers to the phone. Your code never talks to the phone."></div>
+  </div>
+
+  <div class="quiz" id="quiz2">
+    <p class="q">2 · A handler writes "gap 1 = katze" to Firestore, then crashes before returning 200. What does Telegram do, and what must your code guarantee?</p>
+    <button class="opt" data-correct="false">The update is lost — the user must tap again, so nothing special is needed</button>
+    <button class="opt" data-correct="true">Telegram redelivers the same update; the handler must be idempotent, so run #2 sees gap 1 already filled and no-ops</button>
+    <button class="opt" data-correct="false">Telegram rolls back your Firestore write so the retry starts clean</button>
+    <div class="feedback" data-why="Non-200/timeout → redelivery with backoff until you 200 it. Telegram knows nothing about your database and rolls back nothing — YOUR code must tolerate a second run against already-mutated state. That's exactly why practice taps validate against the PracticeDay and why completion has a delete precondition."></div>
+  </div>
+
+  <div class="quiz" id="quiz3">
+    <p class="q">3 · Production suddenly answers every webhook POST with 404 (say, the secret env var was wiped on a redeploy). What do users experience?</p>
+    <button class="opt" data-correct="false">An error message from the bot for every action they take</button>
+    <button class="opt" data-correct="true">Silence — taps spin, messages get no reaction — while updates pile up in the queue; fixing the secret later releases the backlog in a burst</button>
+    <button class="opt" data-correct="false">Nothing changes — Telegram falls back to long polling automatically</button>
+    <div class="feedback" data-why="The bot can't send an error — its handler never runs. Telegram just sees failed deliveries, retries, and grows pending_update_count (visible via getWebhookInfo, along with last_error_message). And there is no automatic fallback: delivery mode is whatever setWebhook last registered. When the route works again, the held updates arrive — possibly all at once, another reason handlers must shrug at weird replays."></div>
+  </div>
+
+  <p class="ask">
+    Want to go deeper on any hop — what <code>getWebhookInfo</code> shows for YOUR bot right now,
+    how grammY decides when the handler is "done", or what Vercel's timeout budget really is?
+    Ask your teacher (me) directly, any time.
+  </p>
+
+  <div class="nav">
+    Previous: <a href="./0003-telegram-entity-model.html">Lesson 3 — The nouns of a Telegram bot</a> ·
+    <a href="./0002-where-bot-state-lives.html">Lesson 2 — Where bot state lives</a> ·
+    <a href="./0001-webhooks-vs-long-polling.html">Lesson 1 — Delivery models</a><br />
+    Reference: <a href="../reference/telegram-entity-glossary.html">Entity glossary</a> ·
+    <a href="../reference/serverless-bot-state.html">State card</a> ·
+    <a href="../reference/webhook-vs-polling-cheatsheet.html">Webhook vs. polling cheat sheet</a><br />
+    Next: <a href="./0005-registration-handshake.html">Lesson 5 — Owning the handshake: setWebhook, secrets, and dev/prod side by side</a>
+  </div>
+
+</div>
+<script>
+  document.querySelectorAll('.quiz').forEach((quiz) => {
+    const feedback = quiz.querySelector('.feedback');
+    quiz.querySelectorAll('.opt').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const correct = btn.dataset.correct === 'true';
+        quiz.querySelectorAll('.opt').forEach((b) => { b.classList.remove('correct', 'wrong'); b.disabled = true; });
+        btn.classList.add(correct ? 'correct' : 'wrong');
+        if (!correct) {
+          quiz.querySelector('.opt[data-correct="true"]').classList.add('correct');
+        }
+        feedback.textContent = (correct ? 'Right. ' : 'Not quite — the highlighted option is correct. ') + feedback.dataset.why;
+        feedback.classList.add('show', correct ? 'correct' : 'wrong');
+      }, { once: true });
+    });
+  });
+</script>
+</body>
+</html>

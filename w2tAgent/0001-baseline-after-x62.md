@@ -1,0 +1,5 @@
+# Baseline: shipped X-62, knows the domain, vocabulary partially internalized
+
+The learner ran the architecture review, discussed candidates #1 and #2 in depth, wrote and refined the X-62 spec (Teach-card model), and shipped it — including independently deciding DEC-6 (per-surface gloss truncation), which shows working grasp of the content-vs-presentation split. X-64 (grading module) is spec'd but not yet implemented. Domain vocabulary (CONTEXT.md) is native to them; architecture vocabulary (seam, adapter, depth, locality, deletion test) has been *used around* them repeatedly but not yet tested as their own active vocabulary.
+
+**Implications:** Zone of proximal development is applying the architecture vocabulary themselves — predicting refactor shapes, spotting wrong-direction dependencies — not learning the domain or being re-told what X-64 says. Lesson 0001 targets exactly this; quiz evidence should decide whether the vocabulary is now active (then record it) before moving to candidate #3 (pure-core extraction from I/O), which is the natural next step up.

@@ -1,0 +1,313 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Lesson 5 — Owning the Handshake: setWebhook, Secrets, and Dev/Prod Side by Side</title>
+<style>
+  :root {
+    --ink: #1a1a1a;
+    --muted: #5c5c5c;
+    --line: #e3e0d8;
+    --paper: #fdfcf9;
+    --accent: #0f6f5c;
+    --accent-soft: #e6f2ef;
+    --wrong: #b3341f;
+    --wrong-soft: #fbe9e6;
+    --code-bg: #f4f2ec;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --ink: #ece9e2;
+      --muted: #a8a49a;
+      --line: #3a3833;
+      --paper: #171613;
+      --accent: #57c6ab;
+      --accent-soft: #16302b;
+      --wrong: #e88a78;
+      --wrong-soft: #331e1a;
+      --code-bg: #211f1a;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--paper); color: var(--ink);
+    font-family: -apple-system, "Segoe UI", Georgia, serif; line-height: 1.65;
+  }
+  .wrap { max-width: 720px; margin: 0 auto; padding: 3rem 1.5rem 6rem; }
+  .kicker {
+    font-family: -apple-system, "Segoe UI", sans-serif;
+    text-transform: uppercase; letter-spacing: 0.08em;
+    font-size: 0.75rem; color: var(--accent); font-weight: 600;
+  }
+  h1 { font-size: 1.9rem; line-height: 1.25; margin: 0.4rem 0 0.5rem; }
+  .lede { color: var(--muted); font-size: 1.05rem; margin-bottom: 2.5rem; }
+  h2 {
+    font-family: -apple-system, "Segoe UI", sans-serif;
+    font-size: 1.15rem; margin-top: 2.8rem;
+    padding-bottom: 0.4rem; border-bottom: 1px solid var(--line);
+  }
+  p { font-size: 1rem; }
+  a { color: var(--accent); }
+  ol.steps { font-size: 1rem; padding-left: 1.4rem; }
+  ol.steps li { margin-bottom: 0.55rem; }
+  .callout {
+    background: var(--accent-soft); border-left: 3px solid var(--accent);
+    padding: 0.9rem 1.1rem; border-radius: 4px; margin: 1.2rem 0; font-size: 0.95rem;
+  }
+  .callout strong { color: var(--accent); }
+  .task {
+    border: 2px solid var(--accent); border-radius: 10px;
+    padding: 1.1rem 1.3rem; margin: 1.5rem 0;
+  }
+  .task .t-label {
+    font-family: -apple-system, "Segoe UI", sans-serif;
+    text-transform: uppercase; letter-spacing: 0.07em;
+    font-size: 0.72rem; color: var(--accent); font-weight: 700;
+  }
+  code {
+    font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
+    font-size: 0.88em; background: var(--code-bg);
+    padding: 0.1em 0.35em; border-radius: 4px;
+  }
+  pre {
+    background: var(--code-bg); padding: 1rem 1.2rem; border-radius: 8px;
+    overflow-x: auto; font-size: 0.85rem; line-height: 1.55;
+  }
+  pre code { background: none; padding: 0; }
+  .file-tag {
+    display: inline-block;
+    font-family: ui-monospace, Consolas, monospace;
+    font-size: 0.75rem; color: var(--muted);
+    border: 1px solid var(--line); border-radius: 4px;
+    padding: 0.1rem 0.5rem; margin-bottom: -0.4rem;
+  }
+  .quiz {
+    border: 1px solid var(--line); border-radius: 10px;
+    padding: 1.2rem 1.4rem; margin: 2rem 0;
+  }
+  .quiz .q {
+    font-family: -apple-system, "Segoe UI", sans-serif;
+    font-weight: 600; font-size: 0.95rem; margin-top: 0;
+  }
+  .quiz .opt {
+    display: block; width: 100%; text-align: left;
+    font-family: -apple-system, "Segoe UI", sans-serif;
+    font-size: 0.92rem; padding: 0.6rem 0.8rem; margin-bottom: 0.5rem;
+    border: 1px solid var(--line); border-radius: 6px;
+    background: var(--paper); color: var(--ink); cursor: pointer;
+  }
+  .quiz .opt:hover { border-color: var(--accent); }
+  .quiz .opt.correct { background: var(--accent-soft); border-color: var(--accent); }
+  .quiz .opt.wrong { background: var(--wrong-soft); border-color: var(--wrong); }
+  .feedback {
+    font-family: -apple-system, "Segoe UI", sans-serif;
+    font-size: 0.88rem; margin-top: 0.6rem;
+    padding: 0.6rem 0.8rem; border-radius: 6px; display: none;
+  }
+  .feedback.show { display: block; }
+  .feedback.correct { background: var(--accent-soft); color: var(--accent); }
+  .feedback.wrong { background: var(--wrong-soft); color: var(--wrong); }
+  .nav {
+    margin-top: 3.5rem; padding-top: 1.2rem; border-top: 1px solid var(--line);
+    font-family: -apple-system, "Segoe UI", sans-serif;
+    font-size: 0.88rem; color: var(--muted);
+  }
+  .nav a { color: var(--accent); text-decoration: none; }
+  .nav a:hover { text-decoration: underline; }
+  .ask {
+    margin-top: 2rem;
+    font-family: -apple-system, "Segoe UI", sans-serif;
+    font-size: 0.88rem; color: var(--muted); font-style: italic;
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="kicker">Lesson 5 · Telegram Bots on Serverless</div>
+  <h1>Owning the Handshake: setWebhook, Secrets, and Dev/Prod Side by Side</h1>
+  <p class="lede">
+    You've seen the registration call in passing since <a href="./0001-webhooks-vs-long-polling.html">lesson 1</a>.
+    This lesson makes you the operator of it: what <code>setWebhook</code> really stores, which
+    secret carries the trust, how to inspect and repair a live registration, and why dev and prod
+    can run at the same time without stealing each other's mail. It ends with you reading your own
+    bot's registration, live.
+  </p>
+
+  <h2>Warm-up (the question left open in chat)</h2>
+  <div class="quiz" id="quiz0">
+    <p class="q">Which leaked secret would let a stranger impersonate <em>you</em> to your own bot — forge an update saying "chat 421337842 says: delete everything" — and what's the fix?</p>
+    <button class="opt" data-correct="true"><code>TELEGRAM_WEBHOOK_SECRET</code> — it's the only gate on inbound POSTs; fix: rotate the env var and re-register, so the route rejects the old path and Telegram POSTs to the new one</button>
+    <button class="opt" data-correct="false">The bot token — with it, anyone can forge inbound updates to your webhook route</button>
+    <button class="opt" data-correct="false"><code>TELEGRAM_OWNER_CHAT_ID</code> — knowing your chat id is enough to impersonate you</button>
+    <div class="feedback" data-why="Anything POSTed to the full secret URL is believed (lesson 4's trust chain), so the secret path segment carries ALL inbound authentication. Your chat id alone is harmless — without the URL there's no door to knock on. A leaked BOT TOKEN is a different, bigger disaster (attacker can send messages AS the bot, or re-point the webhook to their own server) — but it doesn't let them forge inbound updates to YOUR route, because they still don't know your URL. Rotation = new secret in env + redeploy/set-webhook: one move re-locks the route and re-registers the address."></div>
+  </div>
+
+  <h2>What Telegram actually stores</h2>
+  <p>
+    <a href="https://core.telegram.org/bots/api#setwebhook"><code>setWebhook(url)</code></a> writes
+    exactly one record on Telegram's side, keyed by bot token: <em>"deliver this bot's updates by
+    POSTing to this URL."</em> Three properties of that record drive everything operational:
+  </p>
+  <ol class="steps">
+    <li><strong>One per token.</strong> Registering again <em>replaces</em> the previous URL
+      silently — last writer wins. (The preview-hijack hazard from lesson 1 is just this property
+      plus Vercel's throwaway preview URLs.)</li>
+    <li><strong>Idempotent.</strong> Same URL again = harmless no-op. That's why the repo can
+      re-register on every production cold start without ceremony.</li>
+    <li><strong>Exclusive with polling.</strong> While a webhook is registered, calling
+      <code>getUpdates</code> fails with <code>409 Conflict</code> — Telegram refuses to serve the
+      same queue two ways. Delivery mode is a switch, not a mixture.</li>
+  </ol>
+  <div class="callout">
+    <strong>That 409 is the missing "why" from lesson 1:</strong> the dev bot isn't a separate
+    token by convention — it's forced. If dev long-polled the <em>prod</em> token, it would either
+    409 (webhook registered) or, after a <code>deleteWebhook</code>, silently drag production's
+    real updates onto your laptop. A second bot account is the only clean way to have both delivery
+    modes alive at once.
+  </div>
+
+  <h2>The two registrars in this repo</h2>
+  <p>Same call, two triggers — you saw both files in chat; here's the operational logic:</p>
+  <span class="file-tag">server/plugins/register-webhook.ts</span>
+  <pre><code>export default defineNitroPlugin(async () => {
+  if (env.vercelEnv !== 'production') return   // preview deploys: hands off
+  // …
+  const url = `${env.publicBaseUrl}/api/telegram/webhook/${env.telegramWebhookSecret}`
+  await bot.api.setWebhook(url)
+})</code></pre>
+  <p>
+    <strong>Automatic:</strong> a Nitro plugin runs at server boot — on Vercel, that means each
+    cold start. The <code>VERCEL_ENV</code> gate is the whole safety story: without it, every
+    preview deploy's first request would boot the server, self-register its throwaway URL, and
+    steal production's queue (property 1 above).
+  </p>
+  <p>
+    <strong>Manual (<code>npm run set-webhook</code>):</strong> the identical call from your
+    machine. It exists because of a genuine chicken-and-egg: the plugin only runs on a cold start,
+    a cold start only happens when traffic arrives, and no traffic ever arrives until Telegram
+    knows the URL. After the very first production deploy, <em>someone</em> has to make the first
+    move — that's this script.
+  </p>
+  <p>
+    One deliberate omission worth knowing about: <code>setWebhook</code> also accepts a
+    <a href="https://core.telegram.org/bots/api#setwebhook"><code>secret_token</code></a> parameter —
+    Telegram would then echo it back in an <code>X-Telegram-Bot-Api-Secret-Token</code> header on
+    every POST, and you'd verify the header instead of hiding the path. It's the "official" way to
+    authenticate inbound webhooks; this repo skips it and relies on the unguessable path alone.
+    Both are legitimate; the header survives your URL appearing in logs, the path needs zero extra
+    code. Your next bot can choose either — just choose <em>one on purpose</em>.
+  </p>
+
+  <h2>Reading a live registration</h2>
+  <p>
+    <a href="https://core.telegram.org/bots/api#getwebhookinfo"><code>getWebhookInfo</code></a> is
+    the diagnostic view of the stored record — callable from a browser, since bot API methods are
+    plain HTTPS GETs:
+  </p>
+  <pre><code>https://api.telegram.org/bot&lt;TOKEN&gt;/getWebhookInfo</code></pre>
+  <p>The fields that matter, and what they tell you:</p>
+  <ol class="steps">
+    <li><code>url</code> — what's actually registered right now. Empty string = no webhook =
+      polling mode possible. Wrong host = something hijacked or a stale registration.</li>
+    <li><code>pending_update_count</code> — mail Telegram is holding that you haven't 200-ed.
+      Nonzero and growing = your endpoint is failing (lesson 4's silent-outage scenario).</li>
+    <li><code>last_error_message</code> / <code>last_error_date</code> — Telegram's own note about
+      the most recent failed delivery ("connection refused", "wrong response…"). The first place to
+      look when the bot "just stopped answering".</li>
+  </ol>
+
+  <div class="task">
+    <div class="t-label">Hands-on · do this now</div>
+    <p style="margin: 0.5rem 0 0;">
+      Open two browser tabs with <code>getWebhookInfo</code> — one with your <strong>prod</strong>
+      token, one with your <strong>dev</strong> token (both are in <code>.env</code>). Predict
+      before you look: what should <code>url</code> be in each? You should see your production
+      URL + secret in one, and an empty <code>url</code> in the other — the two delivery modes of
+      lessons 1 and 5, live. If prod's <code>pending_update_count</code> is nonzero, tell your
+      teacher — that's a real finding. (Treat these URLs as secrets: they contain the token —
+      don't paste them anywhere public.)
+    </p>
+  </div>
+
+  <h2>The operator's playbook</h2>
+  <ol class="steps">
+    <li><strong>First production deploy:</strong> deploy, then <code>npm run set-webhook</code>
+      once by hand. Verify with <code>getWebhookInfo</code>.</li>
+    <li><strong>Secret rotation (leak, or hygiene):</strong> change
+      <code>TELEGRAM_WEBHOOK_SECRET</code> in the env, redeploy (or run the script). One move does
+      both halves: the route now 404s the old path, and Telegram now POSTs the new one.</li>
+    <li><strong>Bot "stopped answering":</strong> <code>getWebhookInfo</code> first —
+      <code>last_error_message</code> and <code>pending_update_count</code> usually name the
+      culprit before you open a single log.</li>
+    <li><strong>Taking a bot back to polling</strong> (e.g. moving off serverless):
+      <a href="https://core.telegram.org/bots/api#deletewebhook"><code>deleteWebhook</code></a>,
+      optionally with <code>drop_pending_updates: true</code> if the held backlog would replay
+      confusingly. Only then does <code>getUpdates</code> stop 409-ing.</li>
+  </ol>
+
+  <h2>Check the handshake</h2>
+
+  <div class="quiz" id="quiz1">
+    <p class="q">1 · A teammate opens a preview deploy of a bot that lacks the <code>VERCEL_ENV</code> gate. Production goes quiet. What exactly happened, and where's the proof?</p>
+    <button class="opt" data-correct="true">The preview's cold start ran the register plugin and replaced the registration; <code>getWebhookInfo</code>'s <code>url</code> now shows the preview host</button>
+    <button class="opt" data-correct="false">Telegram detected two webhooks for one token and disabled both until you re-verify</button>
+    <button class="opt" data-correct="false">Nothing was replaced — preview URLs can't accept POSTs, so Telegram kept the old registration</button>
+    <div class="feedback" data-why="One record per token, last writer wins, no warning — Telegram happily POSTs to whatever URL registered most recently, preview or not. getWebhookInfo showing the wrong host is the smoking gun; the fix is re-running set-webhook (and adding the gate)."></div>
+  </div>
+
+  <div class="quiz" id="quiz2">
+    <p class="q">2 · You accidentally start <code>npm run bot:dev</code> with the PROD token in <code>TELEGRAM_DEV_BOT_TOKEN</code> while production's webhook is registered. What happens?</p>
+    <button class="opt" data-correct="true">Long polling fails with 409 Conflict — Telegram won't serve a queue by polling while that token has a webhook registered</button>
+    <button class="opt" data-correct="false">It works, and updates are load-balanced between your laptop and production</button>
+    <button class="opt" data-correct="false">It works and silently steals all production updates onto your laptop</button>
+    <div class="feedback" data-why="Delivery mode is exclusive per token: webhook registered → getUpdates 409s. The silent-steal scenario needs a deleteWebhook first — which is why the 409 is actually a guard rail, and why a separate dev bot account is the clean way to run both modes at once."></div>
+  </div>
+
+  <div class="quiz" id="quiz3">
+    <p class="q">3 · Fresh project, first-ever production deploy just finished. Why can't you simply wait for the auto-register plugin to do its job?</p>
+    <button class="opt" data-correct="false">Because the plugin only runs in dev mode, never on Vercel</button>
+    <button class="opt" data-correct="true">Circular dependency: the plugin runs on cold start, cold starts need traffic, and Telegram sends no traffic until a webhook is registered — someone must break the loop manually</button>
+    <button class="opt" data-correct="false">You can — Vercel always boots every function once after deploy, which triggers the plugin</button>
+    <div class="feedback" data-why="Functions are started by requests, not by deploys. With no registration, Telegram never POSTs; with no POSTs (or any other traffic), the plugin never runs. npm run set-webhook is the single manual push that starts the flywheel — after that, cold-start re-registration keeps it spinning. (Any first request — even you opening the web page — would also boot it, but relying on that is hoping, not operating.)"></div>
+  </div>
+
+  <p class="ask">
+    Questions the lesson provokes — should your next bot use <code>secret_token</code> instead of
+    the path? what does <code>drop_pending_updates</code> lose exactly? — ask your teacher (me)
+    directly, any time.
+  </p>
+
+  <div class="nav">
+    Previous: <a href="./0004-request-lifecycle.html">Lesson 4 — The life of a webhook request</a> ·
+    <a href="./0003-telegram-entity-model.html">Lesson 3 — Entity model</a> ·
+    <a href="./0002-where-bot-state-lives.html">Lesson 2 — Where state lives</a> ·
+    <a href="./0001-webhooks-vs-long-polling.html">Lesson 1 — Delivery models</a><br />
+    Reference: <a href="../reference/telegram-entity-glossary.html">Entity glossary</a> ·
+    <a href="../reference/serverless-bot-state.html">State card</a> ·
+    <a href="../reference/webhook-vs-polling-cheatsheet.html">Webhook vs. polling cheat sheet</a><br />
+    Next: <a href="./0006-blank-folder-capstone.html">Lesson 6 — Capstone: a new bot from a blank
+    folder</a>, and the <a href="../reference/new-bot-checklist.html">reusable build checklist</a>.
+  </div>
+
+</div>
+<script>
+  document.querySelectorAll('.quiz').forEach((quiz) => {
+    const feedback = quiz.querySelector('.feedback');
+    quiz.querySelectorAll('.opt').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const correct = btn.dataset.correct === 'true';
+        quiz.querySelectorAll('.opt').forEach((b) => { b.classList.remove('correct', 'wrong'); b.disabled = true; });
+        btn.classList.add(correct ? 'correct' : 'wrong');
+        if (!correct) {
+          quiz.querySelector('.opt[data-correct="true"]').classList.add('correct');
+        }
+        feedback.textContent = (correct ? 'Right. ' : 'Not quite — the highlighted option is correct. ') + feedback.dataset.why;
+        feedback.classList.add('show', correct ? 'correct' : 'wrong');
+      }, { once: true });
+    });
+  });
+</script>
+</body>
+</html>

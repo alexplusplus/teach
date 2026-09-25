@@ -1,0 +1,362 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Lesson 3 — The Nouns of a Telegram Bot: Chats, Messages, Cards, and Their IDs</title>
+<style>
+  :root {
+    --ink: #1a1a1a;
+    --muted: #5c5c5c;
+    --line: #e3e0d8;
+    --paper: #fdfcf9;
+    --accent: #0f6f5c;
+    --accent-soft: #e6f2ef;
+    --wrong: #b3341f;
+    --wrong-soft: #fbe9e6;
+    --code-bg: #f4f2ec;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --ink: #ece9e2;
+      --muted: #a8a49a;
+      --line: #3a3833;
+      --paper: #171613;
+      --accent: #57c6ab;
+      --accent-soft: #16302b;
+      --wrong: #e88a78;
+      --wrong-soft: #331e1a;
+      --code-bg: #211f1a;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: -apple-system, "Segoe UI", Georgia, serif;
+    line-height: 1.65;
+  }
+  .wrap { max-width: 720px; margin: 0 auto; padding: 3rem 1.5rem 6rem; }
+  .kicker {
+    font-family: -apple-system, "Segoe UI", sans-serif;
+    text-transform: uppercase; letter-spacing: 0.08em;
+    font-size: 0.75rem; color: var(--accent); font-weight: 600;
+  }
+  h1 { font-size: 1.9rem; line-height: 1.25; margin: 0.4rem 0 0.5rem; }
+  .lede { color: var(--muted); font-size: 1.05rem; margin-bottom: 2.5rem; }
+  h2 {
+    font-family: -apple-system, "Segoe UI", sans-serif;
+    font-size: 1.15rem; margin-top: 2.8rem;
+    padding-bottom: 0.4rem; border-bottom: 1px solid var(--line);
+  }
+  p { font-size: 1rem; }
+  a { color: var(--accent); }
+  .callout {
+    background: var(--accent-soft); border-left: 3px solid var(--accent);
+    padding: 0.9rem 1.1rem; border-radius: 4px; margin: 1.2rem 0; font-size: 0.95rem;
+  }
+  .callout strong { color: var(--accent); }
+  code {
+    font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
+    font-size: 0.88em; background: var(--code-bg);
+    padding: 0.1em 0.35em; border-radius: 4px;
+  }
+  pre {
+    background: var(--code-bg); padding: 1rem 1.2rem; border-radius: 8px;
+    overflow-x: auto; font-size: 0.85rem; line-height: 1.55;
+  }
+  pre code { background: none; padding: 0; }
+  .file-tag {
+    display: inline-block;
+    font-family: ui-monospace, Consolas, monospace;
+    font-size: 0.75rem; color: var(--muted);
+    border: 1px solid var(--line); border-radius: 4px;
+    padding: 0.1rem 0.5rem; margin-bottom: -0.4rem;
+  }
+  .diagram {
+    background: var(--code-bg); border-radius: 8px;
+    padding: 1rem 1.2rem;
+    font-family: ui-monospace, Consolas, monospace;
+    font-size: 0.8rem; line-height: 1.9; overflow-x: auto; margin: 1.2rem 0;
+    white-space: pre;
+  }
+  .quiz {
+    border: 1px solid var(--line); border-radius: 10px;
+    padding: 1.2rem 1.4rem; margin: 2rem 0;
+  }
+  .quiz .q {
+    font-family: -apple-system, "Segoe UI", sans-serif;
+    font-weight: 600; font-size: 0.95rem; margin-top: 0;
+  }
+  .quiz .opt {
+    display: block; width: 100%; text-align: left;
+    font-family: -apple-system, "Segoe UI", sans-serif;
+    font-size: 0.92rem; padding: 0.6rem 0.8rem; margin-bottom: 0.5rem;
+    border: 1px solid var(--line); border-radius: 6px;
+    background: var(--paper); color: var(--ink); cursor: pointer;
+  }
+  .quiz .opt:hover { border-color: var(--accent); }
+  .quiz .opt.correct { background: var(--accent-soft); border-color: var(--accent); }
+  .quiz .opt.wrong { background: var(--wrong-soft); border-color: var(--wrong); }
+  .feedback {
+    font-family: -apple-system, "Segoe UI", sans-serif;
+    font-size: 0.88rem; margin-top: 0.6rem;
+    padding: 0.6rem 0.8rem; border-radius: 6px; display: none;
+  }
+  .feedback.show { display: block; }
+  .feedback.correct { background: var(--accent-soft); color: var(--accent); }
+  .feedback.wrong { background: var(--wrong-soft); color: var(--wrong); }
+  .nav {
+    margin-top: 3.5rem; padding-top: 1.2rem; border-top: 1px solid var(--line);
+    font-family: -apple-system, "Segoe UI", sans-serif;
+    font-size: 0.88rem; color: var(--muted);
+  }
+  .nav a { color: var(--accent); text-decoration: none; }
+  .nav a:hover { text-decoration: underline; }
+  .ask {
+    margin-top: 2rem;
+    font-family: -apple-system, "Segoe UI", sans-serif;
+    font-size: 0.88rem; color: var(--muted); font-style: italic;
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="kicker">Lesson 3 · Telegram Bots on Serverless</div>
+  <h1>The Nouns of a Telegram Bot: Chats, Messages, Cards, and Their IDs</h1>
+  <p class="lede">
+    Lessons 1 and 2 used words like <em>chat id</em>, <em>message id</em>, and <em>card</em> in
+    passing. This lesson stops and defines every noun properly, then draws the map of how they
+    point at each other — because a bot's entire architecture is really just app state hung off
+    Telegram's ids. There's now a
+    <a href="../reference/telegram-entity-glossary.html">glossary</a> for these terms; from here
+    on, every lesson sticks to it.
+  </p>
+
+  <h2>Warm-up (30 seconds, from lesson 2)</h2>
+  <div class="quiz" id="quiz0">
+    <p class="q">The teach card's cursor position — which of the three kinds of state is it?</p>
+    <button class="opt" data-correct="false">Derived — compute it on read from the day counter</button>
+    <button class="opt" data-correct="true">A told-fact — it records taps that happened, so it lives in the database</button>
+    <button class="opt" data-correct="false">A rebuildable cache — module scope is fine</button>
+    <div class="feedback" data-why="The cursor exists only because a human tapped ▶ some number of times. No formula over code + env can recompute those taps — it's a record of events, i.e. authoritative state, i.e. Firestore."></div>
+  </div>
+
+  <h2>The bot: an account, whose name is a password</h2>
+  <p>
+    A <strong>bot</strong> is just an account on Telegram — a peer that can be in chats, send and
+    receive messages — except a program drives it instead of a phone. You create one by talking to
+    <a href="https://core.telegram.org/bots/features#botfather">BotFather</a> (Telegram's bot for
+    making bots), and what you get back is a <strong>token</strong>: one string, something like
+    <code>7213...:AAH9f...</code>, that is simultaneously the bot's <em>identity</em> and its
+    <em>password</em>. Every API call your code makes embeds this token — that's the entire
+    authentication story, and it's why the token lives in <code>env</code> and never in code.
+  </p>
+  <p>
+    Note what this means for this repo: <code>TELEGRAM_BOT_TOKEN</code> and
+    <code>TELEGRAM_DEV_BOT_TOKEN</code> are <em>two different bots</em> — two separate Telegram
+    accounts with separate usernames, chats, and update queues. Same brain
+    (<code>createBot</code>), two bodies. That's also why dev long-polling can run while prod's
+    webhook stays registered: each bot has its own queue, so they never fight.
+  </p>
+
+  <h2>The chat and its id: an address, not a person</h2>
+  <p>
+    A <strong>chat</strong> is one conversation — you-and-the-bot, a group, a channel. Telegram
+    gives every chat a permanent numeric <strong><code>chat.id</code></strong>, and that number is
+    the bot's <em>postal address</em> for it: sending anything means
+    <code>sendMessage(chatId, …)</code>.
+  </p>
+  <p>
+    A subtlety worth engraving: the chat id identifies the <em>conversation</em>, not the
+    <em>person</em> — even though in a private 1-on-1 chat Telegram deliberately sets the chat id
+    <em>equal to the other party's user id</em>. That's true across <strong>all</strong> bots: your
+    private chat with the dev bot and with the prod bot carry the same number — yours. What keeps
+    them apart is the token the API call is made with, so the full address of a private
+    conversation is really <code>(bot token, chat id)</code>. The two concepts still diverge the
+    moment a group is involved: a group chat has its own (negative) id shared by all members, and
+    the same human talking to your bot privately and in a group shows up under two different
+    chat ids. w2tAgent only ever deals with one private chat, so
+    <a href="./0002-where-bot-state-lives.html">pairing</a> is a single link:
+    <code>telegramLinks/{chatId} → userId</code> — Telegram's address on one side, <em>your app's</em>
+    identity on the other. That translation is the whole point of the pairing table.
+  </p>
+
+  <h2>The message and its id: unique only inside its chat</h2>
+  <p>
+    A <strong>message</strong> is one bubble in a chat. Every message gets a
+    <strong><code>message_id</code></strong> — but here is the trap:
+    <em>message ids are unique only within their chat</em>, they're just a counter that increments
+    per conversation. Message #1042 exists in millions of chats at once. So the true, global
+    address of any bubble on Telegram is the <strong>pair</strong>
+    <code>(chat_id, message_id)</code> — which is exactly the signature of the edit API:
+    <a href="https://core.telegram.org/bots/api#editmessagetext"><code>editMessageText(chat_id,
+    message_id, new_text)</code></a>.
+  </p>
+  <p>
+    Two more facts you'll lean on constantly: a bot can edit <em>its own</em> messages (not the
+    user's), and the id of a message the bot just sent comes back in the API response — you don't
+    invent ids, Telegram assigns them and tells you:
+  </p>
+  <span class="file-tag">server/telegram/teach.ts</span>
+  <pre><code>const message = await api.sendMessage(link.chatId, text, { … })
+const session: TeachSession = {
+  chatId: link.chatId,
+  activeMessageId: message.message_id,   // ← Telegram just assigned this
+  cursor: 0,
+  …
+}</code></pre>
+
+  <h2>The inline keyboard: buttons that belong to a message</h2>
+  <p>
+    An <strong>inline keyboard</strong> is a grid of buttons attached to one specific message —
+    part of the bubble itself, not of the chat. Each button carries a hidden string,
+    <strong><code>callback_data</code></strong>, at most
+    <a href="https://core.telegram.org/bots/api#inlinekeyboardbutton">64 bytes</a>. Lesson 2's
+    rule follows directly: the button carries a <em>verb</em> (<code>teach:next</code>) or
+    <em>coordinates</em> (<code>ans:2:1:0</code>), never state.
+  </p>
+
+  <h2>The callback query: a tap, as an event</h2>
+  <p>
+    When a user taps an inline button, no message is sent. Instead Telegram creates a
+    <strong><a href="https://core.telegram.org/bots/api#callbackquery">callback query</a></strong> —
+    a little event object that answers the three questions your handler needs:
+  </p>
+  <p>
+    <strong>What was tapped?</strong> → the button's <code>callback_data</code>.<br />
+    <strong>Where was it tapped?</strong> → the full message the keyboard was attached to,
+    including its <code>message_id</code>.<br />
+    <strong>Who tapped?</strong> → the tapping user.
+  </p>
+  <p>
+    That middle answer is the linchpin of this repo's whole session design. The tap arrives already
+    knowing which bubble it happened on — so a verb-only button plus the tapped message's id is
+    enough to find the right state:
+  </p>
+  <span class="file-tag">server/telegram/teach.ts</span>
+  <pre><code>const messageId = ctx.callbackQuery?.message?.message_id
+const session = await getTeachSessionByMessage(scope, messageId)
+// … mutate cursor, save, then re-render THAT bubble:
+await ctx.editMessageText(text, { reply_markup: keyboard })</code></pre>
+  <p>
+    One duty comes with every callback query: the client shows a spinner until the bot calls
+    <code>answerCallbackQuery</code>, so the handler must always answer — even for stale buttons
+    and unauthorized chats (that's the <code>onCallback</code> wrapper in
+    <code>server/telegram/bot.ts</code>).
+  </p>
+
+  <h2>The update: the envelope around everything</h2>
+  <p>
+    Everything above — a text message arriving, a button tapped — reaches your code wrapped in an
+    <strong><a href="https://core.telegram.org/bots/api#update">update</a></strong>: Telegram's
+    delivery envelope, with a sequence number (<code>update_id</code>) and exactly one payload
+    inside (<em>either</em> a message <em>or</em> a callback query <em>or</em> …). Updates are what
+    lesson 1 was about moving: the webhook POSTs one update per request; long polling pulls them in
+    batches. grammY opens the envelope and routes the payload to <code>bot.on('message:text')</code>
+    or <code>bot.callbackQuery(…)</code> for you.
+  </p>
+
+  <h2>The card: not a Telegram thing at all</h2>
+  <p>
+    Now the word we've been using loosely. Telegram has no "cards" — it has messages. A
+    <strong>card</strong> is an <em>application pattern</em> built from three entities you now know:
+  </p>
+  <div class="callout">
+    <strong>card = one bot message + an inline keyboard + a DB session doc keyed by that message's
+    id</strong>, redrawn in place with <code>editMessageText</code> on every tap. The message is the
+    <em>screen</em>, the keyboard is the <em>controls</em>, the session doc is the <em>program
+    state</em> — a tiny app living inside one chat bubble.
+  </div>
+  <p>
+    That's why w2tAgent's teach sessions are named <code>teach-{messageId}</code>: one screen, one
+    state doc, joined by the id Telegram assigned at <code>sendMessage</code> time. Every past
+    day's card keeps working forever because each bubble can find its own state.
+  </p>
+
+  <h2>The whole map</h2>
+  <div class="diagram">Telegram's world                          your app's world (Firestore)
+────────────────────────────────────      ─────────────────────────────
+Bot ──(token in env)── your code
+ │
+ ├── Chat  (chat.id 42…) ◄────────────── telegramLinks/{chatId} → userId
+ │     │                                        (pairing: address → identity)
+ │     └── Message  (message_id, per-chat counter)
+ │           │                    ◄────── sessions/teach-{messageId}
+ │           │                                  (the card's state doc)
+ │           └── InlineKeyboard
+ │                 └── button (callback_data ≤ 64 B, verbs only)
+ │                        │
+ │                       tap
+ │                        ▼
+ └── CallbackQuery { data, message ─► message_id, from }
+          │
+      wrapped in an Update ──► webhook POST ──► your handler</div>
+  <p>
+    Read the arrows on the right and you'll see the design rule of the last lesson again from a new
+    angle: <em>every piece of app state is keyed by a Telegram id</em>. Identity state hangs off the
+    chat id; per-card UI state hangs off the message id. When you build your next bot, choosing
+    those keys <em>is</em> designing the bot.
+  </p>
+
+  <h2>Check the map</h2>
+
+  <div class="quiz" id="quiz1">
+    <p class="q">1 · Your bot logged "message_id: 1042" yesterday and you want to edit that message now. Is the id enough?</p>
+    <button class="opt" data-correct="false">Yes — message ids are globally unique, like database auto-ids</button>
+    <button class="opt" data-correct="true">No — message ids are per-chat counters; you need the (chat id, message id) pair</button>
+    <button class="opt" data-correct="false">No — messages can only be edited within 60 seconds of sending</button>
+    <div class="feedback" data-why="message_id 1042 exists in millions of chats. Every message-addressing API call takes chat_id AND message_id — which is why TeachSession stores both chatId and activeMessageId."></div>
+  </div>
+
+  <div class="quiz" id="quiz2">
+    <p class="q">2 · A user taps ▶ on a teach card from four days ago. How does the bot know to move THAT card's cursor and not today's?</p>
+    <button class="opt" data-correct="false">It can't — Telegram only routes taps from the newest message</button>
+    <button class="opt" data-correct="true">The callback query includes the message it was attached to; that message_id keys the right session doc</button>
+    <button class="opt" data-correct="false">The ▶ button's callback_data encodes which day's card it belongs to</button>
+    <div class="feedback" data-why="Every tap arrives knowing its own bubble. ctx.callbackQuery.message.message_id → sessions/teach-{thatId} → that card's own cursor. The button stays a bare verb; the message id does the routing. This is exactly why the repo keys sessions per message instead of one singleton doc."></div>
+  </div>
+
+  <div class="quiz" id="quiz3">
+    <p class="q">3 · Same word, both bots: you send "Hund" to the dev bot and to the prod bot. How many chats, and how do their chat ids compare?</p>
+    <button class="opt" data-correct="true">Two chats — but with the SAME numeric id (yours); the bot token is what tells them apart</button>
+    <button class="opt" data-correct="false">One chat — it's the same human, and chat id identifies the person</button>
+    <button class="opt" data-correct="false">Two chats with two different chat ids — every conversation gets its own unique number</button>
+    <div class="feedback" data-why="Private chat ids are defined as the OTHER party's user id, so every bot's private chat with you is numbered by your user id. The conversations, histories, and update queues are still fully separate — the API call's token is the disambiguator. Full private-chat address: (bot token, chat id)."></div>
+  </div>
+
+  <p class="ask">
+    Anything fuzzy — group chats and negative ids, what else rides in an update, how grammY's
+    <code>ctx</code> maps onto these objects? Ask your teacher (me) directly, any time.
+  </p>
+
+  <div class="nav">
+    Previous: <a href="./0002-where-bot-state-lives.html">Lesson 2 — Where bot state lives</a> ·
+    <a href="./0001-webhooks-vs-long-polling.html">Lesson 1 — Delivery models</a><br />
+    Reference: <a href="../reference/telegram-entity-glossary.html">Telegram bot entity glossary</a> ·
+    <a href="../reference/serverless-bot-state.html">Serverless bot state card</a><br />
+    Next: <a href="./0004-request-lifecycle.html">Lesson 4 — One tap, end to end: the life of a webhook request</a>
+  </div>
+
+</div>
+<script>
+  document.querySelectorAll('.quiz').forEach((quiz) => {
+    const feedback = quiz.querySelector('.feedback');
+    quiz.querySelectorAll('.opt').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const correct = btn.dataset.correct === 'true';
+        quiz.querySelectorAll('.opt').forEach((b) => { b.classList.remove('correct', 'wrong'); b.disabled = true; });
+        btn.classList.add(correct ? 'correct' : 'wrong');
+        if (!correct) {
+          quiz.querySelector('.opt[data-correct="true"]').classList.add('correct');
+        }
+        feedback.textContent = (correct ? 'Right. ' : 'Not quite — the highlighted option is correct. ') + feedback.dataset.why;
+        feedback.classList.add('show', correct ? 'correct' : 'wrong');
+      }, { once: true });
+    });
+  });
+</script>
+</body>
+</html>

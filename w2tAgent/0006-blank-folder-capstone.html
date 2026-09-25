@@ -1,0 +1,380 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Lesson 6 — Capstone: A New Bot From a Blank Folder</title>
+<style>
+  :root {
+    --ink: #1a1a1a;
+    --muted: #5c5c5c;
+    --line: #e3e0d8;
+    --paper: #fdfcf9;
+    --accent: #0f6f5c;
+    --accent-soft: #e6f2ef;
+    --wrong: #b3341f;
+    --wrong-soft: #fbe9e6;
+    --code-bg: #f4f2ec;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --ink: #ece9e2;
+      --muted: #a8a49a;
+      --line: #3a3833;
+      --paper: #171613;
+      --accent: #57c6ab;
+      --accent-soft: #16302b;
+      --wrong: #e88a78;
+      --wrong-soft: #331e1a;
+      --code-bg: #211f1a;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--paper); color: var(--ink);
+    font-family: -apple-system, "Segoe UI", Georgia, serif; line-height: 1.65;
+  }
+  .wrap { max-width: 720px; margin: 0 auto; padding: 3rem 1.5rem 6rem; }
+  .kicker {
+    font-family: -apple-system, "Segoe UI", sans-serif;
+    text-transform: uppercase; letter-spacing: 0.08em;
+    font-size: 0.75rem; color: var(--accent); font-weight: 600;
+  }
+  h1 { font-size: 1.9rem; line-height: 1.25; margin: 0.4rem 0 0.5rem; }
+  .lede { color: var(--muted); font-size: 1.05rem; margin-bottom: 2.5rem; }
+  h2 {
+    font-family: -apple-system, "Segoe UI", sans-serif;
+    font-size: 1.15rem; margin-top: 2.8rem;
+    padding-bottom: 0.4rem; border-bottom: 1px solid var(--line);
+  }
+  h3 {
+    font-family: -apple-system, "Segoe UI", sans-serif;
+    font-size: 1rem; margin: 1.8rem 0 0.3rem;
+  }
+  p { font-size: 1rem; }
+  a { color: var(--accent); }
+  ol.steps { font-size: 1rem; padding-left: 1.4rem; }
+  ol.steps li { margin-bottom: 0.55rem; }
+  .callout {
+    background: var(--accent-soft); border-left: 3px solid var(--accent);
+    padding: 0.9rem 1.1rem; border-radius: 4px; margin: 1.2rem 0; font-size: 0.95rem;
+  }
+  .callout strong { color: var(--accent); }
+  .task {
+    border: 2px solid var(--accent); border-radius: 10px;
+    padding: 1.1rem 1.3rem; margin: 1.5rem 0;
+  }
+  .task .t-label {
+    font-family: -apple-system, "Segoe UI", sans-serif;
+    text-transform: uppercase; letter-spacing: 0.07em;
+    font-size: 0.72rem; color: var(--accent); font-weight: 700;
+  }
+  code {
+    font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
+    font-size: 0.88em; background: var(--code-bg);
+    padding: 0.1em 0.35em; border-radius: 4px;
+  }
+  pre {
+    background: var(--code-bg); padding: 1rem 1.2rem; border-radius: 8px;
+    overflow-x: auto; font-size: 0.85rem; line-height: 1.55;
+  }
+  pre code { background: none; padding: 0; }
+  .build {
+    counter-reset: step; list-style: none; padding-left: 0; margin: 1.5rem 0;
+  }
+  .build > li {
+    position: relative; padding: 1rem 0 1rem 3.2rem;
+    border-top: 1px solid var(--line);
+  }
+  .build > li:last-child { border-bottom: 1px solid var(--line); }
+  .build > li::before {
+    counter-increment: step; content: counter(step);
+    position: absolute; left: 0; top: 1rem;
+    width: 2.1rem; height: 2.1rem; border-radius: 50%;
+    background: var(--accent-soft); color: var(--accent);
+    font-family: -apple-system, "Segoe UI", sans-serif; font-weight: 700;
+    display: flex; align-items: center; justify-content: center; font-size: 0.95rem;
+  }
+  .build .decision {
+    font-family: -apple-system, "Segoe UI", sans-serif;
+    font-weight: 600; font-size: 1rem;
+  }
+  .build .from {
+    font-family: -apple-system, "Segoe UI", sans-serif;
+    font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.05em;
+    color: var(--accent); border: 1px solid var(--accent); border-radius: 4px;
+    padding: 0 0.35rem; margin-left: 0.4rem; white-space: nowrap;
+  }
+  .build .default { font-size: 0.95rem; margin: 0.3rem 0 0; }
+  .build .trap { font-size: 0.9rem; color: var(--muted); margin: 0.3rem 0 0; }
+  .build .trap b { color: var(--wrong); font-weight: 600; }
+  .quiz {
+    border: 1px solid var(--line); border-radius: 10px;
+    padding: 1.2rem 1.4rem; margin: 2rem 0;
+  }
+  .quiz .q {
+    font-family: -apple-system, "Segoe UI", sans-serif;
+    font-weight: 600; font-size: 0.95rem; margin-top: 0;
+  }
+  .quiz .opt {
+    display: block; width: 100%; text-align: left;
+    font-family: -apple-system, "Segoe UI", sans-serif;
+    font-size: 0.92rem; padding: 0.6rem 0.8rem; margin-bottom: 0.5rem;
+    border: 1px solid var(--line); border-radius: 6px;
+    background: var(--paper); color: var(--ink); cursor: pointer;
+  }
+  .quiz .opt:hover { border-color: var(--accent); }
+  .quiz .opt.correct { background: var(--accent-soft); border-color: var(--accent); }
+  .quiz .opt.wrong { background: var(--wrong-soft); border-color: var(--wrong); }
+  .feedback {
+    font-family: -apple-system, "Segoe UI", sans-serif;
+    font-size: 0.88rem; margin-top: 0.6rem;
+    padding: 0.6rem 0.8rem; border-radius: 6px; display: none;
+  }
+  .feedback.show { display: block; }
+  .feedback.correct { background: var(--accent-soft); color: var(--accent); }
+  .feedback.wrong { background: var(--wrong-soft); color: var(--wrong); }
+  .scorecard { list-style: none; padding-left: 0; }
+  .scorecard li {
+    padding: 0.5rem 0 0.5rem 1.8rem; position: relative;
+    border-bottom: 1px solid var(--line); font-size: 0.95rem;
+  }
+  .scorecard li::before {
+    content: "\2713"; position: absolute; left: 0; color: var(--accent); font-weight: 700;
+  }
+  .nav {
+    margin-top: 3.5rem; padding-top: 1.2rem; border-top: 1px solid var(--line);
+    font-family: -apple-system, "Segoe UI", sans-serif;
+    font-size: 0.88rem; color: var(--muted);
+  }
+  .nav a { color: var(--accent); text-decoration: none; }
+  .nav a:hover { text-decoration: underline; }
+  .ask {
+    margin-top: 2rem;
+    font-family: -apple-system, "Segoe UI", sans-serif;
+    font-size: 0.88rem; color: var(--muted); font-style: italic;
+  }
+  @media print {
+    body { background: #fff; color: #000; }
+    .nav, .task, .quiz { break-inside: avoid; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="kicker">Lesson 6 · Telegram Bots on Serverless</div>
+  <h1>Capstone: A New Bot From a Blank Folder</h1>
+  <p class="lede">
+    Five lessons, one payoff. This is the mission itself — building a fresh Telegram bot on Vercel
+    without reverse-engineering w2tAgent again. Not new theory: a <em>build order</em>. Each step is
+    a decision you now know how to make, tagged with the lesson it came from, with its sane default
+    and the trap it avoids. By the end you'll have designed one on paper — and self-scored against
+    everything you set out to learn.
+  </p>
+
+  <h2>Warm-up (carry lesson 5 forward)</h2>
+  <div class="quiz" id="quiz0">
+    <p class="q">Your brand-new bot's code is deployed to production. The webhook route exists, the
+      env vars are set, the auto-register plugin is in place. You message the bot. Silence. What's
+      the single most likely missing move — and why doesn't the auto-register plugin cover it?</p>
+    <button class="opt" data-correct="true">Run <code>npm run set-webhook</code> once by hand — the plugin only runs on a cold start, cold starts need traffic, and no traffic arrives until Telegram knows the URL</button>
+    <button class="opt" data-correct="false">Wait longer — Vercel boots every function automatically after a deploy, so the plugin will fire on its own</button>
+    <button class="opt" data-correct="false">Re-issue the bot token in BotFather; a fresh deploy invalidates the old one</button>
+    <div class="feedback" data-why="The first-deploy chicken-and-egg from lesson 5: functions are started by requests, not by deploys, and the very first request Telegram would send never comes because there's no registration yet. Someone breaks the loop manually, once. After that, cold-start re-registration keeps it current. Tokens don't rotate on deploy."></div>
+  </div>
+
+  <h2>The build order</h2>
+  <p>
+    This is the whole pattern, in the order you'd actually lay it down. Read it as the reusable
+    checklist your mission asked for — the <a href="../reference/new-bot-checklist.html">reference
+    card</a> is the same list, printable, for when you're not reading a lesson.
+  </p>
+
+  <ol class="build">
+    <li>
+      <span class="decision">Two bot accounts, two tokens</span>
+      <span class="from">Lesson 5</span>
+      <p class="default"><strong>Default:</strong> create a prod bot and a dev bot in
+        <a href="https://core.telegram.org/bots/features#botfather">BotFather</a>. Store as
+        <code>TELEGRAM_BOT_TOKEN</code> and <code>TELEGRAM_DEV_BOT_TOKEN</code>.</p>
+      <p class="trap"><b>Why first, why two:</b> delivery mode is exclusive per token — a registered
+        webhook makes <code>getUpdates</code> 409. You physically cannot long-poll for dev while a
+        webhook owns the same token. A second account is the only clean way to run both modes at
+        once. Deciding this up front shapes every env var below.</p>
+    </li>
+    <li>
+      <span class="decision">One framework-agnostic bot module — the brain</span>
+      <span class="from">Criterion 2</span>
+      <p class="default"><strong>Default:</strong> <code>createBot(token)</code> that registers every
+        command / message / callback handler and returns the bot. <em>Explicit relative imports
+        only</em> — no framework auto-imports — so both entrypoints below can import it unchanged.</p>
+      <p class="trap"><b>Trap:</b> writing handler logic directly inside the webhook route. Then dev
+        can't reuse it and you maintain two copies. The brain must not know how it's being delivered.
+        (Repo: <code>server/telegram/bot.ts</code>.)</p>
+    </li>
+    <li>
+      <span class="decision">Two thin entrypoints wrapping the one brain</span>
+      <span class="from">Lessons 1 &amp; 4</span>
+      <p class="default"><strong>Default — dev:</strong> a standalone script that calls
+        <code>bot.start()</code> (long polling) with the dev token.
+        <strong>Prod:</strong> an HTTP route at an <em>unguessable path</em> that hands the request to
+        <code>webhookCallback(bot, 'std/http')</code>.</p>
+      <p class="trap"><b>The shape to keep:</b> each entrypoint is a few lines — a delivery adapter,
+        not logic. Swap Vercel for anything else later by rewriting only these.
+        (Repo: <code>scripts/bot-dev.ts</code>, <code>server/api/telegram/webhook/[secret].post.ts</code>.)</p>
+    </li>
+    <li>
+      <span class="decision">All authoritative state in a database, keyed by Telegram ids</span>
+      <span class="from">Lessons 2 &amp; 3</span>
+      <p class="default"><strong>Default:</strong> identity keyed by <code>chat.id</code>; per-card
+        UI state keyed by <code>message_id</code>. Module-scope memory holds only config-derived,
+        rebuildable caches — never anything a user told you.</p>
+      <p class="trap"><b>Trap:</b> a <code>Map</code> of sessions in module scope. It survives a warm
+        invocation and vanishes on the next cold start — an intermittent bug that passes every local
+        test. If it came from a user, it goes in the DB. Derived values (ages, streaks, counts):
+        compute on read, store nothing.</p>
+    </li>
+    <li>
+      <span class="decision">A pairing handshake, checked on every other handler</span>
+      <span class="from">Lessons 2 &amp; 3</span>
+      <p class="default"><strong>Default:</strong> <code>/start</code> + an authorization check
+        (owner id, or an allowlist) writes a link doc: <code>chatId → userId</code>. Every other
+        handler resolves that link first and rejects unpaired chats.</p>
+      <p class="trap"><b>Why:</b> bots are public and have no login screen — pairing is your only
+        translation from Telegram's address to your app's identity, and the only thing standing
+        between a stranger and your handlers. (Repo: <code>telegramLinks/{chatId}</code>.)</p>
+    </li>
+    <li>
+      <span class="decision">Registration, gated to production</span>
+      <span class="from">Lesson 5</span>
+      <p class="default"><strong>Default:</strong> auto-register on boot, wrapped in
+        <code>if (env.vercelEnv !== 'production') return</code>; plus a manual
+        <code>set-webhook</code> script for the first deploy. Secret lives in env, carried in the URL
+        path (or use <code>secret_token</code> — pick one on purpose).</p>
+      <p class="trap"><b>Trap:</b> registering unconditionally. Every throwaway preview deploy would
+        then overwrite production's single registration and steal its updates. The
+        <code>VERCEL_ENV</code> gate <em>is</em> the safety story.</p>
+    </li>
+    <li>
+      <span class="decision">Idempotent handlers — assume every update arrives twice</span>
+      <span class="from">Lesson 4</span>
+      <p class="default"><strong>Default:</strong> validate each tap/command against stored truth
+        before acting (stale or replayed → no-op); guard one-time writes with a precondition (e.g. a
+        delete-precondition) so a redelivery can't double-commit.</p>
+      <p class="trap"><b>Why:</b> a slow 200 makes Telegram redeliver. "It worked in testing" is no
+        defense — redelivery is a production-only event. Design for at-least-once from day one.</p>
+    </li>
+    <li>
+      <span class="decision">Match the runtime to your dependencies</span>
+      <span class="from">Repo constraint</span>
+      <p class="default"><strong>Default:</strong> if any dependency needs native Node APIs
+        (<code>firebase-admin</code> does), force the <em>Node</em> runtime, not Edge. If your bot is
+        pure-fetch, Edge is fine.</p>
+      <p class="trap"><b>Trap:</b> assuming serverless = Edge. The choice is dictated by your heaviest
+        dependency, not by fashion. (Repo forces Node via <code>nitro.preset: 'vercel'</code>.)</p>
+    </li>
+  </ol>
+
+  <div class="callout">
+    <strong>The one-sentence version:</strong> one framework-agnostic brain, two thin delivery
+    entrypoints (poll for dev, webhook for prod), all told-facts in a DB keyed by Telegram ids, and
+    a production-gated registration handshake. Everything else is your bot's actual features.
+  </div>
+
+  <h2>Your turn — design one</h2>
+  <div class="task">
+    <div class="t-label">Capstone task · bring your answers back to chat</div>
+    <p style="margin: 0.5rem 0 0;">
+      Pick a bot you'd actually want — say, <em>a standup bot that DMs each team member every
+      morning and collects a one-line reply</em> (or invent your own). Without writing code, answer
+      these six, each tracing to a step above:
+    </p>
+    <ol class="steps" style="margin-top: 0.8rem;">
+      <li>Which env vars hold your <strong>two tokens</strong>, and why can't you reuse one? <em>(step 1)</em></li>
+      <li>Name the <strong>one module</strong> both entrypoints import, and one rule about its imports. <em>(step 2)</em></li>
+      <li>What are your <strong>two entrypoint files</strong>, and which delivery mode does each use? <em>(step 3)</em></li>
+      <li>List every piece of state your bot holds, and for each: <strong>DB, module-scope cache, or computed-on-read?</strong> <em>(step 4)</em></li>
+      <li>What does your <strong>pairing</strong> step store, keyed by what, and what's your authorization check? <em>(step 5)</em></li>
+      <li>Where's the <strong>gate</strong> on registration, and what's the one manual command for first deploy? <em>(step 6)</em></li>
+    </ol>
+    <p style="margin: 0.8rem 0 0; font-size: 0.9rem; color: var(--muted);">
+      Send me your six answers and I'll pressure-test them the way we've tested every lesson —
+      hunting for the module-scope <code>Map</code>, the ungated registration, the reused token.
+    </p>
+  </div>
+
+  <h2>Two synthesis checks</h2>
+
+  <div class="quiz" id="quiz1">
+    <p class="q">1 · A teammate proposes: "One bot account. Dev long-polls it; before each dev
+      session we <code>deleteWebhook</code>, and we re-run <code>set-webhook</code> when we're done."
+      What's the fatal flaw?</p>
+    <button class="opt" data-correct="true">While dev is polling, production is dead — the token has no webhook, so real users' updates pile up as <code>pending_update_count</code> until someone remembers to re-register</button>
+    <button class="opt" data-correct="false">Nothing — this is exactly how the repo does it, minus the automation</button>
+    <button class="opt" data-correct="false">It works but doubles your Telegram API costs because of the extra webhook calls</button>
+    <div class="feedback" data-why="One token = one delivery mode = one live environment. deleteWebhook to poll in dev tears down production's delivery for the whole session; updates queue silently and users get nothing. This is precisely why step 1 puts two accounts first — not tidiness, but the only way both environments can be alive at once."></div>
+  </div>
+
+  <div class="quiz" id="quiz2">
+    <p class="q">2 · Your standup bot caches "who has replied today" in a module-scope
+      <code>Set</code> to avoid a DB read. It's flawless in dev and in every test. In production,
+      some people get nagged twice and some never get counted. One root cause fits every symptom —
+      which?</p>
+    <button class="opt" data-correct="true">The <code>Set</code> lives in one function instance's memory; cold starts wipe it and concurrent warm instances each hold a different partial copy — authoritative "who replied" state was never in the DB</button>
+    <button class="opt" data-correct="false">Telegram is delivering updates out of order, so replies land before the nags</button>
+    <button class="opt" data-correct="false">The webhook secret rotated mid-day, so some updates were rejected</button>
+    <button class="opt" data-correct="false">Firestore is eventually consistent, so recent writes weren't visible yet</button>
+    <div class="feedback" data-why="Step 4, exactly. 'Who replied' is a told-fact — it must live in the DB, not module memory. Serverless gives you N instances with N private copies of that Set, each born empty on cold start: double-nags (an instance that never saw the reply) and lost counts (a reply recorded only in an instance that then recycled). The single fix is to move it to the database and read it every time — the intermittent, test-passing bug is the signature of state in the wrong tier."></div>
+  </div>
+
+  <h2>Mission scorecard</h2>
+  <p>The five things you set out to be able to do. If any line doesn't yet feel like "from memory,
+    at a whiteboard", that's the next thing to drill — tell me which.</p>
+  <ul class="scorecard">
+    <li>Explain why serverless forces webhooks in prod and why polling is fine for dev — <a href="./0001-webhooks-vs-long-polling.html">L1</a>, and the 409 that makes it non-negotiable in <a href="./0005-registration-handshake.html">L5</a></li>
+    <li>Design one framework-agnostic module reused by a dev entrypoint and a prod webhook route — steps 2–3 above</li>
+    <li>Set up the <code>setWebhook</code> handshake without clobbering prod from previews — <a href="./0005-registration-handshake.html">L5</a>, step 6</li>
+    <li>Explain why bot state lives in a DB, not in-process memory — <a href="./0002-where-bot-state-lives.html">L2</a>, quiz 2 above</li>
+    <li>Reason about the request lifecycle end to end, redelivery included — <a href="./0004-request-lifecycle.html">L4</a>, step 7</li>
+  </ul>
+
+  <p class="ask">
+    Where next? Two natural directions: <strong>build it for real</strong> — scaffold the standup
+    bot and I review each file against the checklist as you go; or <strong>go deeper on one seam</strong>
+    — grammY sessions/middleware, the <code>secret_token</code> header path, or Firestore data
+    modeling for bot state. Say the word.
+  </p>
+
+  <div class="nav">
+    Previous: <a href="./0005-registration-handshake.html">Lesson 5 — Owning the handshake</a> ·
+    <a href="./0004-request-lifecycle.html">Lesson 4 — Request lifecycle</a> ·
+    <a href="./0003-telegram-entity-model.html">Lesson 3 — Entity model</a> ·
+    <a href="./0002-where-bot-state-lives.html">Lesson 2 — Where state lives</a> ·
+    <a href="./0001-webhooks-vs-long-polling.html">Lesson 1 — Delivery models</a><br />
+    Reference: <a href="../reference/new-bot-checklist.html"><strong>New-bot build checklist</strong></a> ·
+    <a href="../reference/telegram-entity-glossary.html">Entity glossary</a> ·
+    <a href="../reference/serverless-bot-state.html">State card</a> ·
+    <a href="../reference/webhook-vs-polling-cheatsheet.html">Webhook vs. polling cheat sheet</a>
+  </div>
+
+</div>
+<script>
+  document.querySelectorAll('.quiz').forEach((quiz) => {
+    const feedback = quiz.querySelector('.feedback');
+    quiz.querySelectorAll('.opt').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const correct = btn.dataset.correct === 'true';
+        quiz.querySelectorAll('.opt').forEach((b) => { b.classList.remove('correct', 'wrong'); b.disabled = true; });
+        btn.classList.add(correct ? 'correct' : 'wrong');
+        if (!correct) {
+          quiz.querySelector('.opt[data-correct="true"]').classList.add('correct');
+        }
+        feedback.textContent = (correct ? 'Right. ' : 'Not quite — the highlighted option is correct. ') + feedback.dataset.why;
+        feedback.classList.add('show', correct ? 'correct' : 'wrong');
+      }, { once: true });
+    });
+  });
+</script>
+</body>
+</html>

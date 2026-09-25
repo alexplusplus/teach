@@ -1,0 +1,448 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Lesson 2 — Where Bot State Lives (and Why Your Function Forgets)</title>
+<style>
+  :root {
+    --ink: #1a1a1a;
+    --muted: #5c5c5c;
+    --line: #e3e0d8;
+    --paper: #fdfcf9;
+    --accent: #0f6f5c;
+    --accent-soft: #e6f2ef;
+    --wrong: #b3341f;
+    --wrong-soft: #fbe9e6;
+    --code-bg: #f4f2ec;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --ink: #ece9e2;
+      --muted: #a8a49a;
+      --line: #3a3833;
+      --paper: #171613;
+      --accent: #57c6ab;
+      --accent-soft: #16302b;
+      --wrong: #e88a78;
+      --wrong-soft: #331e1a;
+      --code-bg: #211f1a;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: -apple-system, "Segoe UI", Georgia, serif;
+    line-height: 1.65;
+  }
+  .wrap {
+    max-width: 720px;
+    margin: 0 auto;
+    padding: 3rem 1.5rem 6rem;
+  }
+  .kicker {
+    font-family: -apple-system, "Segoe UI", sans-serif;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    font-size: 0.75rem;
+    color: var(--accent);
+    font-weight: 600;
+  }
+  h1 {
+    font-size: 1.9rem;
+    line-height: 1.25;
+    margin: 0.4rem 0 0.5rem;
+  }
+  .lede {
+    color: var(--muted);
+    font-size: 1.05rem;
+    margin-bottom: 2.5rem;
+  }
+  h2 {
+    font-family: -apple-system, "Segoe UI", sans-serif;
+    font-size: 1.15rem;
+    margin-top: 2.8rem;
+    padding-bottom: 0.4rem;
+    border-bottom: 1px solid var(--line);
+  }
+  p { font-size: 1rem; }
+  a { color: var(--accent); }
+  .callout {
+    background: var(--accent-soft);
+    border-left: 3px solid var(--accent);
+    padding: 0.9rem 1.1rem;
+    border-radius: 4px;
+    margin: 1.2rem 0;
+    font-size: 0.95rem;
+  }
+  .callout strong { color: var(--accent); }
+  code {
+    font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
+    font-size: 0.88em;
+    background: var(--code-bg);
+    padding: 0.1em 0.35em;
+    border-radius: 4px;
+  }
+  pre {
+    background: var(--code-bg);
+    padding: 1rem 1.2rem;
+    border-radius: 8px;
+    overflow-x: auto;
+    font-size: 0.85rem;
+    line-height: 1.55;
+  }
+  pre code { background: none; padding: 0; }
+  .file-tag {
+    display: inline-block;
+    font-family: ui-monospace, Consolas, monospace;
+    font-size: 0.75rem;
+    color: var(--muted);
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    padding: 0.1rem 0.5rem;
+    margin-bottom: -0.4rem;
+  }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-family: -apple-system, "Segoe UI", sans-serif;
+    font-size: 0.88rem;
+    margin: 1.2rem 0;
+  }
+  th, td {
+    text-align: left;
+    padding: 0.5rem 0.7rem;
+    border-bottom: 1px solid var(--line);
+    vertical-align: top;
+  }
+  th { font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); }
+  .diagram {
+    background: var(--code-bg);
+    border-radius: 8px;
+    padding: 1rem 1.2rem;
+    font-family: ui-monospace, Consolas, monospace;
+    font-size: 0.82rem;
+    line-height: 1.9;
+    overflow-x: auto;
+    margin: 1.2rem 0;
+  }
+  .diagram .box {
+    display: inline-block;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    padding: 0.1rem 0.6rem;
+    background: var(--paper);
+  }
+  .diagram .arrow { color: var(--muted); }
+  .quiz {
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 1.2rem 1.4rem;
+    margin: 2rem 0;
+  }
+  .quiz .q {
+    font-family: -apple-system, "Segoe UI", sans-serif;
+    font-weight: 600;
+    font-size: 0.95rem;
+    margin-top: 0;
+  }
+  .quiz .opt {
+    display: block;
+    width: 100%;
+    text-align: left;
+    font-family: -apple-system, "Segoe UI", sans-serif;
+    font-size: 0.92rem;
+    padding: 0.6rem 0.8rem;
+    margin-bottom: 0.5rem;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    background: var(--paper);
+    color: var(--ink);
+    cursor: pointer;
+  }
+  .quiz .opt:hover { border-color: var(--accent); }
+  .quiz .opt.correct { background: var(--accent-soft); border-color: var(--accent); }
+  .quiz .opt.wrong { background: var(--wrong-soft); border-color: var(--wrong); }
+  .feedback {
+    font-family: -apple-system, "Segoe UI", sans-serif;
+    font-size: 0.88rem;
+    margin-top: 0.6rem;
+    padding: 0.6rem 0.8rem;
+    border-radius: 6px;
+    display: none;
+  }
+  .feedback.show { display: block; }
+  .feedback.correct { background: var(--accent-soft); color: var(--accent); }
+  .feedback.wrong { background: var(--wrong-soft); color: var(--wrong); }
+  .nav {
+    margin-top: 3.5rem;
+    padding-top: 1.2rem;
+    border-top: 1px solid var(--line);
+    font-family: -apple-system, "Segoe UI", sans-serif;
+    font-size: 0.88rem;
+    color: var(--muted);
+  }
+  .nav a { color: var(--accent); text-decoration: none; }
+  .nav a:hover { text-decoration: underline; }
+  .ask {
+    margin-top: 2rem;
+    font-family: -apple-system, "Segoe UI", sans-serif;
+    font-size: 0.88rem;
+    color: var(--muted);
+    font-style: italic;
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="kicker">Lesson 2 · Telegram Bots on Serverless</div>
+  <h1>Where Bot State Lives (and Why Your Function Forgets)</h1>
+  <p class="lede">
+    In <a href="./0001-webhooks-vs-long-polling.html">lesson 1</a> you saw that a Vercel function
+    wakes up per request and is free to vanish afterward. This lesson is about the consequence:
+    anything your bot needs to <em>remember</em> — who's paired, where a lesson cursor is — cannot
+    live in a JavaScript variable. Except when it can. Learning to tell those two cases apart is
+    the one skill this lesson teaches.
+  </p>
+
+  <h2>The amnesia problem, concretely</h2>
+  <p>
+    Imagine the obvious way to remember which chats have run <code>/start</code>:
+  </p>
+  <pre><code>// ❌ the tempting version — module scope
+const pairedChats = new Set&lt;number&gt;()
+
+bot.command('start', (ctx) => { pairedChats.add(ctx.chat.id) })
+bot.on('message:text', (ctx) => {
+  if (!pairedChats.has(ctx.chat.id)) return ctx.reply('Not authorized.')
+  // …
+})</code></pre>
+  <p>
+    On your laptop under long polling this works forever, because one process handles every update.
+    On Vercel it works <em>sometimes</em> — which is worse than never. Two consecutive Telegram
+    updates are two separate HTTPS POSTs, and the platform makes no promise they reach the same
+    function instance. An instance that sat idle gets recycled; a traffic burst spins up fresh ones
+    that start with an empty <code>Set</code>. (Vercel's
+    <a href="https://vercel.com/docs/functions">Fluid Compute</a> does reuse instances across
+    requests, so module scope often <em>survives</em> — that's exactly what makes this bug
+    intermittent rather than immediate.)
+  </p>
+  <div class="diagram">
+    <div>update 1 → <span class="box">instance A</span> pairedChats = { 42 } &nbsp;✓ paired</div>
+    <div>update 2 → <span class="box">instance A</span> (warm, remembers) &nbsp;✓ still works…</div>
+    <div>— hours pass, instance A is recycled —</div>
+    <div>update 3 → <span class="box">instance B</span> pairedChats = { } &nbsp;✗ "Not authorized."</div>
+  </div>
+  <div class="callout">
+    <strong>The rule:</strong> module-scope memory on serverless is a <em>maybe</em> — it survives
+    warm reuse and dies on recycle, with zero warning either way. Anything whose loss would change
+    the bot's behavior must live in a database.
+  </div>
+
+  <h2>First: what "pairing" even means</h2>
+  <p>
+    A Telegram bot has no login screen. When you create one via
+    <a href="https://core.telegram.org/bots/features#botfather">BotFather</a>, it gets a public
+    username — anyone on Telegram can search for it and send it a message, right now, no password,
+    no sign-up. And every update your code receives identifies its sender only by a numeric
+    <code>chat.id</code>. So the platform leaves two questions entirely to you:
+    <em>should I talk to this chat at all?</em> and <em>which user of MY app is this chat?</em>
+  </p>
+  <p>
+    <strong>Pairing</strong> is the one-time handshake that answers both questions and writes the
+    answer down. It works like pairing Bluetooth headphones: any phone in range could try to
+    connect, so you deliberately approve one, once — and from then on the headphones recognize that
+    phone automatically. For a bot, the handshake produces a stored link
+    <code>chat id → your app's user</code>, and every future message is checked against it.
+    Without pairing, any stranger who stumbled on the bot would be adding words to
+    <em>your</em> backlog.
+  </p>
+  <p>
+    The link matters in both directions, too. Inbound: "message from chat 42 → that's Alex."
+    Outbound: the daily pipeline knows it wants to push a teach card to <em>the user</em> — it needs
+    the link to find <em>which chat</em> to send it to (<code>findTelegramLinkByUserId</code>).
+  </p>
+
+  <h2>How w2tAgent remembers pairing</h2>
+  <p>
+    Here, <code>/start</code> is the handshake. It accepts only the one chat id listed in the
+    <code>TELEGRAM_OWNER_CHAT_ID</code> env var — that's the "deliberately approve one phone" step —
+    and then records the link as a Firestore document:
+  </p>
+  <span class="file-tag">server/domain/telegramLinks.ts</span>
+  <pre><code>export async function getTelegramLink(chatId: number) {
+  const snap = await telegramLinksCollection().doc(String(chatId)).get()
+  return snap.exists ? (snap.data() as TelegramLink) : null
+}
+
+export async function upsertTelegramLink(chatId: number, userId: string) {
+  const link: TelegramLink = { chatId, userId, pairedAt: Date.now() }
+  await telegramLinksCollection().doc(String(chatId)).set(link)
+  return link
+}</code></pre>
+  <span class="file-tag">server/telegram/bot.ts</span>
+  <pre><code>async function resolveScopeSilent(ctx: Context): Promise&lt;Scope | null&gt; {
+  const chatId = ctx.chat?.id
+  if (chatId === undefined) return null
+  const link = await getTelegramLink(chatId)   // ← DB read, every update
+  if (!link) return null
+  const user = await getOrCreateUser(link.userId)
+  return { userId: link.userId, language: user.activeLanguage }
+}</code></pre>
+  <p>
+    Notice what statelessness costs: every message and every button tap pays a Firestore round trip
+    just to answer "who is this chat?". That's not an accident or laziness — it's the price of a
+    backend that can be killed and restarted between any two requests. When you build your next bot,
+    budget for this read; don't try to cache your way out of it with module scope, because that
+    recreates the amnesia bug with extra steps.
+  </p>
+
+  <h2>UI state goes in the database too</h2>
+  <p>
+    Pairing is the obvious case. Less obvious: even <em>where the user is inside a conversation</em>
+    is state. w2tAgent's daily teach card is one Telegram message edited in place, with
+    ◀ / ▶ buttons moving a cursor through three words. Where does the cursor live? Not in the
+    button, and not in memory — in a Firestore doc keyed by the card's message id:
+  </p>
+  <span class="file-tag">server/domain/teachSessions.ts</span>
+  <pre><code>// One session doc per teach card, keyed by the card's Telegram
+// message id — so every card in the chat history stays interactive
+// with its own cursor state, not just the latest one.
+function teachSessionDoc(scope: Scope, messageId: number) {
+  return sessionsCollection(scope).doc(`teach-${messageId}`)
+}</code></pre>
+  <p>
+    The buttons themselves carry only an action verb — <code>teach:next</code>,
+    <code>teach:back</code> — never the state. Telegram caps a button's
+    <a href="https://core.telegram.org/bots/api#inlinekeyboardbutton"><code>callback_data</code>
+    at 64 bytes</a>, so you couldn't stuff a session in there anyway. The pattern that falls out
+    is worth naming, because it generalizes to every bot you'll build:
+  </p>
+  <div class="callout">
+    <strong>Thin callbacks, fat database.</strong> A button tap sends a verb; the tapped message's
+    id looks up the authoritative state in the DB; the handler mutates that state and re-renders
+    the message. The Telegram message is just a <em>view</em> — the database row is the truth.
+    Bonus: old messages stay interactive forever, because each one can find its own state.
+  </div>
+
+  <h2>The exception: the one variable that's allowed</h2>
+  <p>
+    Now the twist. The production webhook route <em>does</em> keep a module-scope variable:
+  </p>
+  <span class="file-tag">server/api/telegram/webhook/[secret].post.ts</span>
+  <pre><code>let handler: ((req: Request) => Promise&lt;Response&gt;) | null = null
+
+export default defineEventHandler(async (event) => {
+  // …secret check…
+  if (!handler) {
+    handler = webhookCallback(createBot(env.telegramBotToken), 'std/http')
+  }
+  return handler(toWebRequest(event))
+})</code></pre>
+  <p>
+    Is that a bug? No — and seeing why is the whole lesson. A program holds two very different
+    kinds of things in memory. Some it <em>learned from the world</em>: a human did something —
+    tapped <code>/start</code>, answered a gap — and the variable is the only record that the event
+    ever happened. Others it <em>worked out by itself</em>, from ingredients it still has: env vars,
+    config, its own code.
+  </p>
+  <p>
+    Think of your phone. Its <strong>contacts list</strong> and its <strong>photo thumbnail
+    cache</strong> are both "data on the phone" — but delete the thumbnails and nothing is lost:
+    the phone quietly regenerates them from the original photos, things are just slow for a moment.
+    Delete the contacts and they're <em>gone</em> — no amount of computation can rediscover your
+    friends' phone numbers, because the phone didn't compute them in the first place; it was
+    <em>told</em> them, once, by you.
+  </p>
+  <p>
+    <code>handler</code> is a thumbnail. It's built from two ingredients — the bot token in
+    <code>env</code> and the <code>createBot</code> function in the code — and every fresh function
+    instance still has both. If the instance dies, the next one rebuilds an identical
+    <code>handler</code> in a few milliseconds; no user could ever tell. That's what
+    <strong>rebuildable cache</strong> means: a convenience copy of something that can always be
+    remade, kept in memory purely so warm instances skip redoing the work on every request.
+  </p>
+  <p>
+    A <code>TelegramLink</code> is a contact. It records that a pairing <em>happened</em> — an event
+    in the past. A fresh instance has the env vars and the code, but no formula can recompute
+    "chat 42 belongs to Alex" from them; the only way to know is to have written it down when it
+    happened. That's <strong>authoritative state</strong>: if the process's memory were the only
+    copy, losing it would change the bot's behavior (the user is suddenly "Not authorized."), so it
+    must live somewhere that outlives the process — the database.
+  </p>
+  <div class="callout">
+    <strong>Why "cache" is the right word:</strong> a cache is, by definition, a copy kept close
+    for speed while the real thing exists — or can be remade — somewhere else. If a variable is the
+    only copy in the universe of some fact, it is not a cache, whatever the code calls it, and it
+    doesn't belong in module scope.
+  </div>
+  <table>
+    <tr><th>Question to ask</th><th>Rebuildable cache</th><th>Authoritative state</th></tr>
+    <tr><td>Loss changes behavior?</td><td>No — only latency</td><td>Yes — data/access is gone</td></tr>
+    <tr><td>Can be recomputed from config/env?</td><td>Yes</td><td>No — it records events (a pairing, a tap)</td></tr>
+    <tr><td>Where it may live</td><td>Module scope is fine</td><td>Database, always</td></tr>
+    <tr><td>In this repo</td><td><code>let handler</code>, the lazy LLM-chain singleton</td><td><code>telegramLinks</code>, <code>sessions/teach-*</code>, <code>sessions/practice</code></td></tr>
+  </table>
+
+  <h2>Classify it yourself</h2>
+
+  <div class="quiz" id="quiz1">
+    <p class="q">1 · Your next bot has a quiz flow: the user is on question 3 of 5. Where does "current question index" live?</p>
+    <button class="opt" data-correct="false">Module scope — it's tiny, just an integer</button>
+    <button class="opt" data-correct="false">In the inline button's <code>callback_data</code>, e.g. <code>answer:3:b</code>, so no storage is needed</button>
+    <button class="opt" data-correct="true">In a DB row keyed by chat (or message) id — it records where the user actually is</button>
+    <div class="feedback" data-why="It's authoritative: if it vanished, the bot would restart or misgrade the quiz. Encoding position in callback_data alone also breaks — the user can tap an OLD question's button and your handler must detect that against stored truth, exactly why w2tAgent validates every tap against the PracticeDay doc."></div>
+  </div>
+
+  <div class="quiz" id="quiz2">
+    <p class="q">2 · You create a database client (like this repo's Firestore connection) once at module scope and reuse it across requests. Legit?</p>
+    <button class="opt" data-correct="true">Yes — losing it only costs a reconnect; it's rebuildable from env config</button>
+    <button class="opt" data-correct="false">No — same amnesia bug as <code>pairedChats</code></button>
+    <button class="opt" data-correct="false">Only if you also persist the client's connection details to the database</button>
+    <div class="feedback" data-why="A connection/client is derived entirely from configuration, never from user events. Its loss changes latency, not behavior — the definition of a rebuildable cache. This is exactly the standard serverless pattern for DB clients."></div>
+  </div>
+
+  <div class="quiz" id="quiz3">
+    <p class="q">3 · To save Firestore reads, you add <code>const linkCache = new Map&lt;number, TelegramLink&gt;()</code> at module scope in front of <code>getTelegramLink</code>. Safe?</p>
+    <button class="opt" data-correct="true">Mostly — a read-through cache of DB truth is rebuildable — but it can serve stale data after an unpair/re-pair, so it needs an invalidation story</button>
+    <button class="opt" data-correct="false">Completely safe — it's a cache, and caches are always fine</button>
+    <button class="opt" data-correct="false">Never safe — module scope must stay empty on serverless</button>
+    <div class="feedback" data-why="The subtle case. It IS rebuildable (truth stays in Firestore), so cold starts are harmless. The danger is staleness: instance A caches a link, you delete the pairing, instance A keeps honoring it. Fine for immutable data; risky for anything that can change. w2tAgent just doesn't bother — one read per update is cheap and always correct."></div>
+  </div>
+
+  <p class="ask">
+    Unclear on anything — how the practice flow validates stale taps, what Fluid Compute changes
+    exactly, or how grammY's built-in session plugin compares to this repo's hand-rolled sessions?
+    Ask your teacher (me) directly, any time.
+  </p>
+
+  <div class="nav">
+    Previous: <a href="./0001-webhooks-vs-long-polling.html">Lesson 1 — How Telegram delivers messages to your code</a><br />
+    Reference: <a href="../reference/serverless-bot-state.html">Serverless bot state — classification card</a> ·
+    <a href="../reference/webhook-vs-polling-cheatsheet.html">Webhook vs. long polling cheat sheet</a><br />
+    Next: <a href="./0003-telegram-entity-model.html">Lesson 3 — The nouns of a Telegram bot: chats, messages, cards, and their IDs</a>
+  </div>
+
+</div>
+<script>
+  document.querySelectorAll('.quiz').forEach((quiz) => {
+    const feedback = quiz.querySelector('.feedback');
+    quiz.querySelectorAll('.opt').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const correct = btn.dataset.correct === 'true';
+        quiz.querySelectorAll('.opt').forEach((b) => { b.classList.remove('correct', 'wrong'); b.disabled = true; });
+        btn.classList.add(correct ? 'correct' : 'wrong');
+        if (!correct) {
+          quiz.querySelector('.opt[data-correct="true"]').classList.add('correct');
+        }
+        feedback.textContent = (correct ? 'Right. ' : 'Not quite — the highlighted option is correct. ') + feedback.dataset.why;
+        feedback.classList.add('show', correct ? 'correct' : 'wrong');
+      }, { once: true });
+    });
+  });
+</script>
+</body>
+</html>

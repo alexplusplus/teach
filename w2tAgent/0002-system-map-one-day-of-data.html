@@ -1,0 +1,168 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lesson 2 — The system map: one day of data (context for X-64)</title>
+<style>
+  :root { --ink:#1e293b; --muted:#64748b; --accent:#047857; --blue:#1d4ed8; --red:#b91c1c; --amber:#b45309; --bg:#fafaf9; --card:#fff; --line:#e2e8f0; }
+  * { box-sizing:border-box; }
+  body { margin:0; font:16px/1.65 Georgia, 'Times New Roman', serif; color:var(--ink); background:var(--bg); }
+  main { max-width:46rem; margin:0 auto; padding:2rem 1.25rem 4rem; }
+  h1 { font-size:1.65rem; line-height:1.25; margin:0 0 .3rem; }
+  h2 { font-size:1.2rem; margin:2.2rem 0 .6rem; border-bottom:1px solid var(--line); padding-bottom:.3rem; }
+  .meta { color:var(--muted); font-size:.85rem; margin-bottom:1.5rem; }
+  .mission { background:#ecfdf5; border-left:3px solid var(--accent); padding:.6rem .9rem; font-size:.9rem; }
+  code { font-family:ui-monospace, Consolas, monospace; font-size:.85em; background:#eef2f7; padding:.05em .3em; border-radius:3px; }
+  .stack { margin:1rem 0; }
+  .band { border:1.5px solid var(--ink); border-radius:9px; padding:.55rem .8rem; background:var(--card); font-size:.86rem; margin:.35rem 0; }
+  .band h4 { margin:0 0 .15rem; font-size:.75rem; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); }
+  .band.tg { border-left:5px solid var(--blue); }
+  .band.web { border-left:5px solid var(--accent); }
+  .band.core { border-left:5px solid var(--amber); }
+  .band.db { background:#0f172a; color:#e2e8f0; border-color:#0f172a; }
+  .down { text-align:center; color:var(--muted); font-size:.85rem; }
+  .steps { counter-reset: s; list-style:none; padding:0; margin:1rem 0; }
+  .steps li { counter-increment:s; position:relative; padding:.45rem 0 .45rem 2.4rem; border-left:2px solid var(--line); margin-left:1rem; font-size:.93rem; }
+  .steps li::before { content:counter(s); position:absolute; left:-0.85rem; top:.45rem; width:1.6rem; height:1.6rem; border-radius:50%; background:var(--ink); color:#fff; font:bold .8rem/1.6rem sans-serif; text-align:center; }
+  .steps li.w::before { background:var(--red); }
+  .steps li .tag { font-size:.72rem; text-transform:uppercase; letter-spacing:.04em; color:var(--red); font-weight:bold; }
+  .q { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:1rem 1.1rem; margin:1.2rem 0; }
+  .q p.stem { margin:.1rem 0 .7rem; font-weight:bold; }
+  .q label { display:block; padding:.45rem .6rem; margin:.3rem 0; border:1px solid var(--line); border-radius:7px; cursor:pointer; font-size:.92rem; background:#fff; }
+  .q label:hover { border-color:var(--accent); }
+  .q .fb { display:none; margin-top:.7rem; padding:.6rem .8rem; border-radius:7px; font-size:.9rem; }
+  .q.answered .fb.show { display:block; }
+  .fb.ok { background:#ecfdf5; border-left:3px solid var(--accent); }
+  .fb.no { background:#fef2f2; border-left:3px solid var(--red); }
+  .q.answered label { pointer-events:none; opacity:.75; }
+  .q.answered label.chosen { opacity:1; border-width:2px; }
+  .q.answered label.right { border-color:var(--accent); background:#ecfdf5; opacity:1; }
+  .q.answered label.chosen.wrong { border-color:var(--red); background:#fef2f2; }
+  #score { display:none; margin-top:1.5rem; padding:1rem; border-radius:10px; background:#0f172a; color:#e2e8f0; text-align:center; font-size:1.05rem; }
+  .foot { margin-top:3rem; padding-top:1rem; border-top:1px solid var(--line); font-size:.85rem; color:var(--muted); }
+  a { color:var(--accent); }
+  .note { font-size:.85rem; color:var(--muted); }
+</style>
+</head>
+<body>
+<main>
+  <h1>The system map: one day of data</h1>
+  <p class="meta">Lesson 0002 · ~20 minutes · companion reference: <a href="../reference/system-map-w2t.html">system map</a> · builds on <a href="0001-seam-direction-and-the-grading-rule.html">lesson 0001</a></p>
+
+  <p class="mission"><b>Why this lesson:</b> lesson 0001 zoomed into one seam. To judge <em>any</em> seam you need the whole map in your head — which layer owns what, and how a day of data actually moves. This is the step-back view, with X-64 pinned where it belongs. (Stepping back to the entity model before formalizing worked for you in the Telegram course; same move here, one level up.)</p>
+
+  <h2>1 · The question that organizes everything</h2>
+  <p>When the user taps <b>Next</b> on a teach card, or answers a gap — where does the app <em>remember</em> where they are? Not in the Node process: on Vercel the function instance may be recycled between any two taps. Not in the Telegram message: a message is pixels, and old messages must keep working. The answer, always, is: <b>a Firestore document is the state; the server is a stateless translator; the surfaces are projections.</b> You met this idea in the Telegram course ("code is not storage"); this codebase applies it everywhere, and it is why every flow below is legible as <em>read doc → decide → write doc → repaint surface</em>.</p>
+
+  <h2>2 · Three layers, two fronts</h2>
+  <div class="stack">
+    <div class="band tg"><h4>Front A — Telegram (push + interact)</h4>Teach cards, practice buttons, nudges. Bare text = Capture; <em>everything else is an inline-keyboard callback</em> carrying coordinates like <code>ans:2:1:0</code> — never free text (<a href="https://core.telegram.org/bots/api#callbackquery">Bot API: CallbackQuery</a>).</div>
+    <div class="band web"><h4>Front B — Web (pull, read-only-ish)</h4>Three plain Nuxt pages calling <code>/api/*</code> with <code>useFetch</code>. No state library, no client Firestore SDK. Practice never lives here — the Ladder page deep-links into Telegram.</div>
+    <div class="down">▼ both fronts hit the same server ▼</div>
+    <div class="band core"><h4>Backend — one Nitro server, three doors</h4><b>Webhook</b> (<code>/api/telegram/webhook/[secret]</code>) · <b>web API</b> (<code>/api/backlog</code>, <code>/api/ladder</code>…) · <b>cron</b> (Vercel Cron → <code>/api/cron/tick</code>, <a href="https://vercel.com/docs/cron-jobs">docs</a>). Inside: Telegram adapters (<code>server/telegram/*</code>), web pipeline (<code>server/pipeline/ladder.ts</code>), and the shared core — <code>pipeline/tick.ts</code>, <code>exercises/*</code> (X-64's <code>grade.ts</code> goes here), <code>domain/*</code>.</div>
+    <div class="down">▼ firebase-admin, server-side only ▼</div>
+    <div class="band db"><h4>Storage — Firestore, everything namespaced by Scope (userId, language)</h4>The state doc (<code>scopes/{id}</code>: dayCounter, tickArmed) · durable lexicon (<code>lexemes</code>, <code>results</code>) · episodic pipeline (<code>backlogItems</code>, <code>portions</code>, <code>sessions/practice</code>, <code>sessions/teach-*</code>). Idiom: <b>document presence is state</b> — a PracticeDay that exists means "day unfinished"; a scope doc that doesn't means "never bootstrapped". (<a href="https://firebase.google.com/docs/firestore/data-model">Firestore data model</a>)</div>
+  </div>
+  <p class="note">Note what is <em>not</em> here: no queue, no cache, no ORM, no client database. One server, one database, two projections. Every architectural question in this repo reduces to "which module, which document, which direction".</p>
+
+  <h2>3 · Flow A — one engagement day, traced</h2>
+  <p>Red steps write; dark steps only read. Follow where the <em>authority</em> lives at each moment.</p>
+  <ol class="steps">
+    <li>3:00 UTC: Vercel Cron GETs <code>/api/cron/tick</code> → <code>maybeTick('cron')</code>. Reads the scope doc and backlog count. The <b>Gate</b>: armed (yesterday completed) AND backlog ≥ 3 AND not ticked today. Fail any → silent no-tick; the pipeline just pauses.</li>
+    <li>Generation, <em>before any write</em>: Yandex gloss + one LLM call per new Portion + one gap-text call per Exercise. A failure here aborts with Firestore untouched — the user gets a 🔁 Retry button, not a half-ticked day.</li>
+    <li class="w"><span class="tag">write · atomic</span> <code>commitTick</code> — one transaction: dayCounter+1, consume tickArmed, retire the age-8 Portion, create today's Portion + enriched Lexemes, consume BacklogItems, write the new <b>PracticeDay</b> with every Exercise pre-generated (answers all <code>null</code>). It re-checks the Gate inside the transaction, so racing duplicates commit exactly once (X-65).</li>
+    <li class="w"><span class="tag">write · side effects</span> Post-commit: teach push (intro + one card message) + a TeachSession doc keyed by that message's id. If the push fails, the day stays ticked — side effects never un-tick.</li>
+    <li>The user walks the card: each <code>teach:next</code> callback loads the tapped message's own TeachSession, moves the cursor, edits the message in place. Old cards keep their own sessions — that's why last week's card still works.</li>
+    <li class="w"><span class="tag">write · per tap</span> Practice: each <code>ans:ex:gap:target</code> tap loads the PracticeDay, validates the coordinates against it (stale message? already-filled gap? → safe no-op), writes <em>one</em> answer into <code>answers[]</code>, repaints the single practice message.</li>
+    <li class="w"><span class="tag">write · atomic</span> The last gap of the last Exercise: grading runs (X-64: <code>wordStatus</code> over each word's gaps) and <code>commitPracticeCompletion</code> writes Results + <b>deletes</b> the PracticeDay + sets <code>tickArmed</code> — one batch, with a delete-precondition so a double-fired tap can't write Results twice. The reveal doubles as the day's summary. Tomorrow, step 1 finds the Gate open.</li>
+  </ol>
+
+  <h2>4 · Flow B — the web read path</h2>
+  <p><code>GET /api/ladder</code> → <code>buildLadderView(scope)</code>: read dayCounter → list Portions → <em>derive</em> ages (never stored) → keep rungs {0,1,2,3,5,7} → hydrate Lexemes → <code>buildTeachCard</code> each (X-62's shared model — the card <em>is</em> the wire shape). Then the status dot, and here is the X-64 hinge: <b>if a PracticeDay exists, grade its live answers; if not, read today's Results</b> (<code>dayIndex === dayCounter</code>). Same verdict, two sources, one moment of handover at step 7 above — which is exactly why both sides must be one function.</p>
+
+  <h2>5 · X-64 on the map</h2>
+  <p>Now the issue reads differently than it did in lesson 0001: it is not "move a function", it is a <em>map correction</em>. Grading is consumed by Flow A step 7 (Telegram, writes durable truth) and Flow B step 2 (web, displays live truth). A rule consumed by both fronts belongs in the shared core layer — below both, importing nothing from either. Today it lives inside Front A's adapter, and Front B reaches sideways into it. The refactor moves one band down the stack. That's the whole issue, seen from orbit.</p>
+
+  <h2>6 · Check yourself</h2>
+
+  <div class="q" data-a="2">
+    <p class="stem">Q1. Mid-practice, the user's phone dies. Three days later they tap ✅ Practice → in Telegram and resume exactly where they left off. What made that work?</p>
+    <label><input type="radio" name="q1"> The Telegram message still contained the exercise state in its buttons</label>
+    <label><input type="radio" name="q1"> The Node process kept the session in memory and was still warm</label>
+    <label><input type="radio" name="q1"> The PracticeDay document still exists in Firestore — its presence <em>is</em> "day unfinished", and a fresh card is rendered from it</label>
+    <div class="fb ok">Yes. Buttons only carry coordinates; the process is disposable; the document is the state. Resume sends a fresh card rendered from the authoritative PracticeDay and re-points <code>activeMessageId</code> at it. Calendar gaps are invisible to the pipeline — "pause" isn't even a stored state, it's just the Gate not firing.</div>
+    <div class="fb no">Neither the message nor the process can be trusted: callback data carries only coordinates (~20 bytes), and Vercel recycles function instances freely. The answer is the idiom from section 1: the PracticeDay document in Firestore is the state; its continued existence means "day unfinished", and resume just renders a fresh card from it.</div>
+  </div>
+
+  <div class="q" data-a="0">
+    <p class="stem">Q2. The webhook route answers Telegram with HTTP 200 <em>before</em> processing the update, doing the work detached (X-65). What failure does the fast ack prevent?</p>
+    <label><input type="radio" name="q2"> Telegram redelivers unacknowledged updates — a slow tick-length handler got redelivered and ran 3–4 times in parallel</label>
+    <label><input type="radio" name="q2"> Vercel bills by response time, so slow responses cost more</label>
+    <label><input type="radio" name="q2"> Telegram drops the bot's webhook registration if responses exceed 10 seconds</label>
+    <div class="fb ok">Right. Telegram treats a slow response as a failed delivery and retries — so a ~30-second tick handler received the same update several times, in parallel. The fix has two halves: ack fast + run detached (<code>waitUntil</code>), and make <code>commitTick</code> a re-checking transaction so even racing duplicates commit exactly once. Notice the defense-in-depth: the transport fix reduces duplicates; the transaction makes them harmless.</div>
+    <div class="fb no">Billing and deregistration aren't the mechanism. Telegram redelivers updates it considers unacknowledged — and a tick-length handler (~30s of LLM calls) outlives the answer window, so the same update ran 3–4 times in parallel (that was X-65). Fast ack + detached work reduces duplicates; the re-checking <code>commitTick</code> transaction makes any survivors commit exactly once.</div>
+  </div>
+
+  <div class="q" data-a="1">
+    <p class="stem">Q3. Why are Results + delete-PracticeDay + set-tickArmed one atomic batch rather than three writes?</p>
+    <label><input type="radio" name="q3"> Performance — one round-trip is faster than three</label>
+    <label><input type="radio" name="q3"> Consistency — a crash between separate writes could leave impossible states (Results written but day still "unfinished", or a consumed day that never armed tomorrow's tick), and the delete-precondition makes a double-fire unable to write Results twice</label>
+    <label><input type="radio" name="q3"> Firestore requires related documents to be written together</label>
+    <div class="fb ok">Exactly. Enumerate the partial states and each is poisonous: Results without the delete = the Ladder could double-count "today"; delete without arming = tomorrow's tick never fires. And the precondition ("delete must find the doc") turns the batch into a natural idempotency lock — the second concurrent completion fails the precondition and writes nothing. Same design as <code>commitTick</code>: the batch is the unit of truth-change.</div>
+    <div class="fb no">It's not speed and Firestore has no such requirement. Work through the partial states: Results written but PracticeDay alive → the day is both done and not done; PracticeDay deleted but tickArmed unset → the pipeline silently stops forever. The batch makes truth change all-or-nothing, and its delete-precondition doubles as an idempotency lock against double-fired completions.</div>
+  </div>
+
+  <div class="q" data-a="2">
+    <p class="stem">Q4. <code>GET /api/ladder</code> finds no PracticeDay document. What does that mean, and where do the dots come from?</p>
+    <label><input type="radio" name="q4"> The scope was never bootstrapped — the page shows the empty state</label>
+    <label><input type="radio" name="q4"> An error: the tick always writes a PracticeDay, so one must exist</label>
+    <label><input type="radio" name="q4"> Today's practice is finished (completion deleted the doc) — dots come from Results filtered to <code>dayIndex === dayCounter</code></label>
+    <div class="fb ok">Right. Absence of the PracticeDay is a <em>meaningful</em> state: completed. The dots switch source to the durable Results for today's dayIndex, and stay "today" until the next tick raises dayCounter. (Never-bootstrapped is signaled by a different absence — the scope doc itself.) This handover between two sources is precisely the moment X-64 protects.</div>
+    <div class="fb no">Never-bootstrapped is signaled by the <em>scope doc's</em> absence, and it's no error — completion deletes the PracticeDay by design. Its absence means "today is done", and the dots switch to Results at <code>dayIndex === dayCounter</code> until the next tick. Two sources, one handover moment — the exact seam X-64 makes safe.</div>
+  </div>
+
+  <div class="q" data-a="0">
+    <p class="stem">Q5. A future feature: a weekly e-mail digest of missed words. Using the map, which layer does its "which words were missed" logic belong to, and why?</p>
+    <label><input type="radio" name="q5"> Shared core (near <code>grade.ts</code>/domain) — a third front consuming the same verdicts; e-mail is just another projection</label>
+    <label><input type="radio" name="q5"> A new <code>server/email/</code> module with its own Results query and correctness logic, keeping e-mail concerns isolated</label>
+    <label><input type="radio" name="q5"> The web layer — the Ladder already computes statuses, so the digest should call <code>/api/ladder</code></label>
+    <div class="fb ok">Yes — and this is the map paying off. E-mail would be Front C: presentation of verdicts computed once in the shared core. Option 2 recreates X-64's disease (a fourth opinion about correctness); option 3 recreates its wrong-direction seam (one surface leaning sideways on another surface's endpoint). New surface → new adapter → same core.</div>
+    <div class="fb no">Careful — option 2 is how the X-64 problem was born (another copy of the verdict logic in a surface module), and option 3 is the wrong-direction seam again, just pointing at the web instead of at Telegram. A digest is Front C: a new thin adapter over the same shared verdicts. New surface → new adapter → same core.</div>
+  </div>
+
+  <div id="score"></div>
+
+  <div class="foot">
+    <p><b>Ask your teacher.</b> Good follow-ups: "walk me through commitTick's transaction re-check line by line", "why is age derived instead of stored", "what would break if practice moved to the web page?"</p>
+    <p>Reference: <a href="../reference/system-map-w2t.html">system map</a> (keep this one — it's the compressed version) · <a href="../reference/architecture-design-glossary.html">architecture glossary</a> · <a href="../reference/serverless-bot-state.html">serverless bot state</a> (previous course — section 1 is its sequel) · <a href="0001-seam-direction-and-the-grading-rule.html">lesson 0001</a></p>
+    <p>Next: with the map in hand, candidate #3 (the Tick's Gate as a pure core inside an I/O shell) — you now know every document it reads.</p>
+  </div>
+</main>
+<script>
+  const qs = [...document.querySelectorAll('.q')];
+  let done = 0, right = 0;
+  qs.forEach(q => {
+    const correct = +q.dataset.a;
+    const labels = [...q.querySelectorAll('label')];
+    labels.forEach((lab, i) => lab.querySelector('input').addEventListener('change', () => {
+      q.classList.add('answered');
+      lab.classList.add('chosen');
+      labels[correct].classList.add('right');
+      const ok = i === correct;
+      if (!ok) lab.classList.add('wrong');
+      q.querySelector(ok ? '.fb.ok' : '.fb.no').classList.add('show');
+      done++; if (ok) right++;
+      if (done === qs.length) {
+        const s = document.getElementById('score');
+        s.style.display = 'block';
+        s.textContent = `Score: ${right}/${qs.length}` + (right === qs.length
+          ? ' — you hold the map. Tell the agent; candidate #3 is next.'
+          : right >= 3 ? ' — solid. Revisit the flows behind the misses, then report your score to the agent.'
+          : ' — re-walk Flow A with the reference open, then ask the agent to quiz you fresh.');
+      }
+    }));
+  });
+</script>
+</body>
+</html>
