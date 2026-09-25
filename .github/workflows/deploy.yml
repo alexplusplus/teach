@@ -1,0 +1,47 @@
+# Put in the PUBLIC repo as .github/workflows/deploy.yml
+# Settings -> Pages -> Source: "GitHub Actions"
+# Regenerates index.html on every push and deploys the whole repo.
+
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Generate index
+        run: |
+          {
+            echo '<!doctype html><meta charset="utf-8">'
+            echo '<meta name="viewport" content="width=device-width,initial-scale=1">'
+            echo '<title>teach</title><ul>'
+            find . -name '*.html' -not -path './.*' -not -path './index.html' \
+              | sed 's|^\./||' | sort \
+              | while read -r f; do echo "<li><a href=\"$f\">$f</a></li>"; done
+            echo '</ul>'
+          } > index.html
+
+      - uses: actions/upload-pages-artifact@v4
+        with:
+          path: .
+
+      - id: deployment
+        uses: actions/deploy-pages@v4
