@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Agents in a Thread</title>
+<link rel="stylesheet" href="../assets/course.css">
+</head>
+<body>
+<main>
+<header class="lesson">
+  <div class="kicker">Lesson 1 · Agentic generation for the Teaching Assistant</div>
+  <h1>Where an agent earns its place in a Thread</h1>
+  <p class="lede">Two decisions come before choosing a platform. First, which rung each generation belongs on. Second, where a Thread's state lives once an agent writes its messages. About 12 minutes.</p>
+</header>
+
+<div class="callout"><p><strong>Updated 2026-09-16.</strong> You have since allowed agents to write memory and Postgres to shrink to a harness, and the ADK TypeScript package turned out to ship a Postgres-backed session service. The ladder and the placement exercise still hold. The "session-per-job" rule below applies only under the original assumptions. See <a href="0003-when-the-agent-owns-memory.html">Lesson 3</a> for the revised design.</p></div>
+<h2>Why this matters now</h2>
+<p>Your map commits to an agentic rewrite after the MVP. Ticket <a href="../.scratch/teaching-assistant/issues/13-generation-engine-seam.md">13 · Generation engine seam</a> is still open and asks exactly this: <em>"Which generations are expected to go agentic, and which stay plain calls"</em>, and how a slower agent fits the job dispatch. By the end of this lesson you can answer the first half of that ticket.</p>
+
+<h2>The ladder</h2>
+<p>Anthropic's guidance draws one line. In a <em>workflow</em>, "LLMs and tools are orchestrated through predefined code paths". In an <em>agent</em>, the LLM "dynamically direct[s] its own processes and tool usage". They recommend starting with the simplest option.<sup class="cite"><a href="https://www.anthropic.com/engineering/building-effective-agents">[1]</a></sup> Google made the same argument for ADK 2.0: model-driven routing is "slow, expensive, and exhibit[s] variance compared to a workflow or deterministic code".<sup class="cite"><a href="https://developers.googleblog.com/why-we-built-adk-20/">[2]</a></sup> For this project that gives four rungs:</p>
+<ol class="ladder">
+  <li><b>Plain LLM call</b><span>Your code assembles every input, and one call returns a fixed shape. This is the MVP today.</span></li>
+  <li><b>Workflow (ADK 2.0 graph)</b><span>Code fixes the order of the steps. Some steps are deterministic functions (load, validate, record) and some are LLM calls. ADK 2.0 makes these typed <code>node()</code>s joined by edges.<sup class="cite"><a href="https://adk.dev/graphs/">[3]</a></sup></span></li>
+  <li><b>Agent with tools</b><span>The model decides <em>what to fetch next</em>, such as opening another Project file or checking earlier Lessons, and loops until it is done. In ADK this can be a single agent node inside the graph.</span></li>
+  <li><b>Managed agent session</b><span>A vendor runs the loop <em>and</em> hosts a sandbox and session state: Claude Managed Agents<sup class="cite"><a href="https://platform.claude.com/docs/en/managed-agents/overview.md">[4]</a></sup> or Gemini's Antigravity agent.<sup class="cite"><a href="https://ai.google.dev/gemini-api/docs/antigravity-agent">[5]</a></sup></span></li>
+</ol>
+<div class="callout key">
+  <p><strong>The climbing test.</strong> Move a generation up a rung only if (a) the model has to <em>decide what context to fetch</em> part-way through, (b) the job can wait for the slower result, and (c) the gain is worth several times the tokens. Your own research estimates about $0.01 per Lesson for plain calls and $0.03–0.15 for an agent loop (<a href="../.scratch/teaching-assistant/research/lesson-generation-engine.md">engine research</a>).</p>
+</div>
+
+<h2>A Thread is not an agent session</h2>
+<p>It is tempting to map one Thread to one long-lived agent session, with every Reaction or Reply as a new message to it. Check that against what you already decided:</p>
+<div class="timeline" aria-label="A Thread over time, with short generation jobs">
+  <span class="ev">☀️ morning run</span><span class="arrow">→</span>
+  <span class="ev job">job: Lesson</span><span class="arrow">→</span>
+  <span class="ev">hours pass</span><span class="arrow">→</span>
+  <span class="ev">tap Difficult</span><span class="arrow">→</span>
+  <span class="ev job">job: Lesson</span><span class="arrow">→</span>
+  <span class="ev">Reply</span><span class="arrow">→</span>
+  <span class="ev job">job: classify</span><span class="arrow">→</span>
+  <span class="ev job">job: Follow-up</span><span class="arrow">→</span>
+  <span class="ev">/next starts a newer Thread (this one still takes Replies)</span>
+</div>
+<ul>
+  <li>A Thread is never closed: <code>/next</code> and the morning run start a newer one, and older Threads still accept Replies and Exercise/Repetition taps (ticket 12, decided 2026-09-17). <strong>Progress lives on the Topic, not the Thread</strong> (<a href="../.scratch/teaching-assistant/issues/06-lesson-selection-and-progression.md">ticket 06</a>).</li>
+  <li><strong>Generators never write memory.</strong> They return fixed shapes, and the bot validates and records them in append-only Postgres (<a href="../.scratch/teaching-assistant/issues/07-learner-memory.md">ticket 07</a>).</li>
+  <li>Reactions are handled by rules, not the LLM: a toast (and, on the Topic's latest Lesson, a progression step) within the webhook's 1–2 s acknowledgement (<a href="../.scratch/teaching-assistant/issues/04-lesson-and-thread-ux-in-telegram.md">ticket 04</a>).</li>
+</ul>
+<div class="table-wrap"><table>
+<thead><tr><th></th><th>Session-per-Thread</th><th>Session-per-job <em>(recommended)</em></th></tr></thead>
+<tbody>
+<tr><td>What the agent is</td><td>A stateful conversation partner</td><td>A stateless generator behind the seam</td></tr>
+<tr><td>Thread memory</td><td>In the vendor's session history</td><td>In your Postgres, which the agent reads through tools or an input bundle</td></tr>
+<tr><td>Sources of truth</td><td>Two, which can drift (the same problem <a href="../docs/adr/0001-backlog-files-as-source-of-truth.md">ADR 0001</a> avoided)</td><td>One</td></tr>
+<tr><td>Swapping engines</td><td>Needs the history migrated</td><td>Change the adapter only</td></tr>
+<tr><td>Platform support</td><td>Gemini keeps environments for 7 days<sup class="cite"><a href="https://ai.google.dev/gemini-api/docs/agents">[6]</a></sup>. ADK TS 2.1 can store sessions in Postgres (<code>DatabaseSessionService</code>; the docs are behind the code)<sup class="cite"><a href="https://github.com/google/adk-js/tree/main/core/src/sessions">[7]</a></sup></td><td>Works on all three</td></tr>
+</tbody></table></div>
+<p>ADK 2.0 can pause a graph for a human with <code>RequestInput</code> and resume it later.<sup class="cite"><a href="https://adk.dev/graphs/human-input/">[8]</a></sup> That fits a pause of minutes inside one job. For a Reaction that comes the next morning, send it as a new event to a stored session instead (<a href="0003-when-the-agent-owns-memory.html">Lesson 3</a>).</p>
+
+<h2>Practice: place each generation</h2>
+<p>Pick a rung for each item, then read why. <span class="score"></span></p>
+
+<div class="quiz" data-answer="a"><p class="q">1. Reply classify: Instruction or Note, with a placeholder shown in about 2 s.</p><div class="opts">
+<button data-k="a" data-why="Every input is known (Reply, targeted message, Track › Topic), the output is small JSON, and the 2 s placeholder rules out an agent loop.">Plain LLM call</button>
+<button data-k="b" data-why="There is only one step. A graph adds nothing here, and the latency target is tight.">ADK graph workflow</button>
+<button data-k="c" data-why="There is nothing to explore. The classifier's inputs are fixed by ticket 09.">Agent with tools</button>
+<button data-k="d" data-why="Sandbox start-up and a multi-turn loop would miss the ~2 s placeholder target by a wide margin.">Managed agent session</button></div></div>
+
+<div class="quiz" data-answer="b"><p class="q">2. A Lesson: select the focus → gather Postgres rows and GitHub files → write → validate → return a fixed shape.</p><div class="opts">
+<button data-k="a" data-why="This is the MVP choice. The planned upgrade is for when Project-grounded Lessons turn out shallow, and then the fixed order stays while one step starts exploring.">Plain LLM call</button>
+<button data-k="b" data-why="The order is fixed: load, select, validate, write, validate. Make select an agent node that can open more Project files, and keep the rest deterministic.">ADK graph workflow</button>
+<button data-k="c" data-why="Close, but a free-roaming agent would also own validation and ordering, which your code should keep. Put the agent inside the graph as one node.">Agent with tools</button>
+<button data-k="d" data-why="It would work, but it adds a second state store and a vendor-locked model for a two-to-three-paragraph message.">Managed agent session</button></div></div>
+
+<div class="quiz" data-answer="a"><p class="q">3. Answer feedback: given the Exercise, its hidden answer and the Answer, return feedback and an outcome.</p><div class="opts">
+<button data-k="a" data-why="All the evidence is already in the prompt, so there is nothing to fetch. It is one JSON call.">Plain LLM call</button>
+<button data-k="b" data-why="A single step with a fixed input doesn't need a graph.">ADK graph workflow</button>
+<button data-k="c" data-why="The model has nothing to decide to fetch.">Agent with tools</button>
+<button data-k="d" data-why="A sandbox and hosted session are far too heavy for grading one Answer.">Managed agent session</button></div></div>
+
+<div class="quiz" data-answer="d"><p class="q">4. Refreshing a Project digest: clone the repo, read many files, and list Candidate improvements. It is slow and latency doesn't matter.</p><div class="opts">
+<button data-k="a" data-why="A whole repository doesn't fit well in one prompt, and choosing which files matter is the hard part.">Plain LLM call</button>
+<button data-k="b" data-why="Possible, but you would have to build the file-reading tools and the storage yourself.">ADK graph workflow</button>
+<button data-k="c" data-why="Reasonable, but a self-hosted loop has no filesystem to clone into, which is what a managed sandbox provides.">Agent with tools</button>
+<button data-k="d" data-why="A sandbox with git, bash and file tools, a long run and no latency pressure: this is what managed agents are built for. Claude Managed Agents can even run it on a schedule.">Managed agent session</button></div></div>
+
+<div class="quiz" data-answer="c"><p class="q">5. A Follow-up for the Instruction "show me where my own w2tAgent code does this".</p><div class="opts">
+<button data-k="a" data-why="The MVP Follow-up context (targeted message, last ~6 messages, Instruction, Notes) contains no Project files. A plain call would have to guess.">Plain LLM call</button>
+<button data-k="b" data-why="Only if you can list the files in advance, and you can't: which file matters depends on the question.">ADK graph workflow</button>
+<button data-k="c" data-why="The model has to decide which files to open (from the digest and then GitHub). That is exactly the climbing test. It is still one job with a fixed-shape result.">Agent with tools</button>
+<button data-k="d" data-why="Read-only GitHub access through a tool is enough. Cloning into a sandbox is more than a Follow-up needs.">Managed agent session</button></div></div>
+
+<div class="quiz" data-answer="b"><p class="q">6. Where should the targeted Thread's "last ~6 messages" come from when an agent writes a Follow-up?</p><div class="opts">
+<button data-k="a" data-why="The vendor session is a copy, not the record. Ticket 07 makes Postgres the only store of memory.">The vendor's session history</button>
+<button data-k="b" data-why="Right. The adapter loads them from append-only Postgres, either as an input bundle or through a read tool, so there is one source of truth.">Postgres rows via seam</button>
+<button data-k="c" data-why="Telegram's Bot API doesn't let a bot read back chat history, and your records already hold it.">Telegram history fetched live</button>
+<button data-k="d" data-why="Under the original assumptions Postgres records are the only memory. An in-memory ADK session also disappears when Cloud Run recycles the instance.">ADK in-memory session state</button></div></div>
+
+<details class="recall"><summary>Before you leave: say the climbing test from memory, then open this</summary>
+<p>The model must decide what to fetch mid-task · the job can wait · the gain is worth several times the tokens. And whatever rung a generation is on, Thread state stays in Postgres: <strong>session-per-job</strong>.</p></details>
+
+<div class="source"><strong>Read next (primary source):</strong> <a href="https://www.anthropic.com/engineering/building-effective-agents">Anthropic, "Building effective agents"</a>, especially the part on when to use agents. Then skim <a href="https://developers.googleblog.com/why-we-built-adk-20/">"Why we built ADK 2.0"</a>, which makes the same point from Google's side.</div>
+
+<p class="note">Anything unclear, or disagree with a placement? Ask me, your teacher, in the Claude Code session. Pushback on these answers is useful input for ticket 13.</p>
+
+<nav class="pager"><span>Reference: <a href="../reference/agent-surfaces-cheatsheet.html">Agent surfaces cheat sheet</a></span><a href="0002-three-platforms-one-seam.html">Lesson 2 · Three platforms, one seam →</a></nav>
+</main>
+<script src="../assets/quiz.js"></script>
+</body>
+</html>

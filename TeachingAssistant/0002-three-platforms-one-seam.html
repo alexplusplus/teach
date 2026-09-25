@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Three Platforms, One Seam</title>
+<link rel="stylesheet" href="../assets/course.css">
+</head>
+<body>
+<main>
+<header class="lesson">
+  <div class="kicker">Lesson 2 · Agentic generation for the Teaching Assistant</div>
+  <h1>Three platforms, one seam</h1>
+  <p class="lede">ADK 2.0, Claude Managed Agents and Gemini's Antigravity agent compared against your constraints, and how each would plug into the generation engine seam. About 15 minutes.</p>
+</header>
+
+<details class="recall"><summary>Warm-up: answer from memory before opening</summary>
+<p>(1) State the three parts of the climbing test. (2) Where does a Thread's state live when an agent writes its messages, and why?</p>
+<p><em>(1) The model must decide what to fetch mid-task; the job can wait; the gain is worth the extra tokens. (2) In Postgres, with one agent session per job (session-per-job), because generators never write memory and there should be one source of truth. <a href="0001-where-an-agent-earns-its-place-in-a-thread.html">Lesson 1</a>.</em></p></details>
+
+<h2>The three, side by side</h2>
+<p>Facts as of September 2026. All three are moving fast, so check the linked docs again before you build.</p>
+<div class="table-wrap"><table>
+<thead><tr><th></th><th>Google ADK 2.0 (TypeScript)</th><th>Claude Managed Agents</th><th>Gemini Managed Agents (Antigravity)</th></tr></thead>
+<tbody>
+<tr><td>What it is</td><td>A framework: you host the loop and the graph<sup class="cite"><a href="https://adk.dev/2.0/">[1]</a></sup></td><td>A hosted API: versioned Agent → Session per run → event stream, with a container per session<sup class="cite"><a href="https://platform.claude.com/docs/en/managed-agents/overview.md">[2]</a></sup></td><td>A hosted API: <code>interactions.create</code> with <code>agent: "antigravity-preview-05-2026"</code>, running in a Linux sandbox<sup class="cite"><a href="https://ai.google.dev/gemini-api/docs/antigravity-agent">[3]</a></sup></td></tr>
+<tr><td>Status</td><td>GA (TS 2.0.0, 2026-08-21)</td><td>Beta</td><td>Public preview</td></tr>
+<tr><td>Runs on</td><td>Node, deployed to Cloud Run (not Deno or Supabase Edge)<sup class="cite"><a href="https://adk.dev/deploy/cloud-run/">[4]</a></sup></td><td>Anthropic's infrastructure</td><td>Google's infrastructure</td></tr>
+<tr><td>Models</td><td>Gemini built in. OpenRouter needs a custom <code>BaseLlm</code> (<a href="../.scratch/teaching-assistant/research/lesson-generation-engine.md">your research</a>)</td><td>Claude only, through the Anthropic API</td><td>Gemini 3.5–3.8 Flash only, through the Gemini API<sup class="cite"><a href="https://ai.google.dev/gemini-api/docs/agents">[5]</a></sup></td></tr>
+<tr><td>Fixed-shape output</td><td>Typed node <code>outputSchema</code> (zod)<sup class="cite"><a href="https://adk.dev/graphs/">[6]</a></sup></td><td>Validate the final message yourself</td><td>"Does not support structured outputs", so you validate the text</td></tr>
+<tr><td>Your own tools</td><td>Ordinary functions or nodes, in your own process</td><td>The agent emits <code>agent.custom_tool_use</code>, the session goes <em>idle</em>, and you send back <code>user.custom_tool_result</code></td><td>The interaction returns <code>requires_action</code>, and you call <code>create</code> again with a <code>function_result</code></td></tr>
+<tr><td>Long runs</td><td>Your Cloud Run request</td><td>Stream events, or state-change webhooks<sup class="cite"><a href="https://platform.claude.com/docs/en/managed-agents/events-and-streaming.md">[7]</a></sup></td><td><code>background: true</code>, then poll <code>interactions.get</code></td></tr>
+<tr><td>State</td><td>In-memory, Postgres (<code>DatabaseSessionService</code>) or Agent Platform sessions; Memory Bank service (in the 2.1.0 package, although the docs lag)<sup class="cite"><a href="https://github.com/google/adk-js/tree/main/core/src">[8]</a></sup></td><td>Sessions persist, and memory stores persist across sessions</td><td><code>previous_interaction_id</code>; environments kept for 7 days</td></tr>
+<tr><td>Secrets</td><td>Your own environment</td><td>Vault credentials, substituted when requests leave the sandbox</td><td>Network <code>allowlist</code> with header <code>transform</code></td></tr>
+<tr><td>Cost beyond tokens</td><td>Cloud Run, probably within the free tier</td><td>Runtime at $0.08 per active hour; a hard dollar budget per session is available</td><td>Sandbox compute is not billed during the preview</td></tr>
+</tbody></table></div>
+
+<div class="callout key">
+  <p><strong>The conflict to decide.</strong> Your map says <em>all LLM calls go to OpenRouter directly</em>. Of the three, only ADK can keep that rule. Both managed services run their own vendor's models on their own API. Using either one for the bot means relaxing that preference, at least for the jobs you move to it. That decision is yours to make, and it belongs in the map.</p>
+</div>
+
+<h2>How each plugs into the seam</h2>
+<p>The worker is a Supabase Edge Function with a 150 s wall clock (<a href="../.scratch/teaching-assistant/issues/01-supabase-free-tier-capabilities.md">ticket 01</a>). An agent run can take longer than that. So an agent-ready seam needs two outcomes: <em>done now</em> or <em>pending, collect later</em>.</p>
+<pre><code>generate(kind, jobId, bundle) → { done, result } | { pending, runRef }
+collect(runRef)               → { done, result } | { pending } | { failed }
+// The bot always validates `result` against the fixed shape, then records it.</code></pre>
+<ul>
+  <li><strong>Plain calls (MVP):</strong> always return <em>done</em>. Nothing changes for the bot.</li>
+  <li><strong>ADK graph on Cloud Run:</strong> <code>load → select (agent node with read tools) → validate → write → validate</code>. The worker POSTs the job and gets <em>pending</em>. Cloud Run posts the result back to a Supabase function, which validates, records and sends it. The session lives only as long as the job.</li>
+  <li><strong>Claude Managed Agents:</strong> create a session per job, and put the context bundle in as mounted files so no custom-tool round trips are needed. Give it read-only GitHub access through a vault credential. Collect the result when a webhook says the session went idle.</li>
+  <li><strong>Antigravity:</strong> <code>background: true</code> returns an interaction id as the <code>runRef</code>. The existing pg_cron tick polls <code>interactions.get</code>. Credentials go through the network allowlist.</li>
+</ul>
+<p class="note">Why mount the bundle instead of exposing tools? Each custom-tool call pauses a managed session until <em>your</em> code answers, so every answer would be another Edge Function invocation. A bundle given up front plus read-only GitHub access avoids those round trips. Keep custom tools for the ADK graph, where tools run in the same process.</p>
+
+<h2>Where each one fits best in this project</h2>
+<div class="table-wrap"><table>
+<thead><tr><th>Use</th><th>Best fit</th><th>Why</th></tr></thead>
+<tbody>
+<tr><td>Classify, Exercise, Answer feedback, Topic recap</td><td>Plain calls</td><td>All inputs are known and the latency targets are tight</td></tr>
+<tr><td>Project-grounded Lesson; Follow-ups that need code</td><td><strong>ADK 2.0 graph</strong> with one agent node</td><td>Keeps OpenRouter, typed outputs and fixed order, and adds exploration only where it pays</td></tr>
+<tr><td>Project digest refresh (clone, read, list Candidate improvements)</td><td><strong>Managed agent</strong> (either)</td><td>Sandbox with git and files, slow is fine, runs outside the Thread; Claude Managed Agents can also run it on a schedule</td></tr>
+<tr><td>A trial against the ADK graph</td><td>Managed agent, session-per-job</td><td>Cheap to try behind the same seam, and the result shows whether a hosted harness writes better Lessons</td></tr>
+</tbody></table></div>
+
+<h2>Practice</h2>
+<p><span class="score"></span></p>
+
+<div class="quiz" data-answer="a"><p class="q">1. Which platform can keep the "all LLM calls go to OpenRouter" rule?</p><div class="opts">
+<button data-k="a" data-why="Yes. ADK TS accepts a custom BaseLlm subclass, which can call OpenRouter with fetch.">ADK TypeScript 2.0</button>
+<button data-k="b" data-why="Managed Agents runs Claude models on Anthropic's API. You don't bring your own endpoint.">Claude Managed Agents</button>
+<button data-k="c" data-why="The Antigravity agent runs Gemini Flash models on the Gemini API only.">Gemini Managed Agents</button>
+<button data-k="d" data-why="One of them can: ADK, through a custom model class.">None of them</button></div></div>
+
+<div class="quiz" data-answer="c"><p class="q">2. Whose docs say the agent "does not support structured outputs"?</p><div class="opts">
+<button data-k="a" data-why="ADK graph nodes declare typed outputSchema contracts.">ADK TypeScript 2.0</button>
+<button data-k="b" data-why="That quote isn't from Anthropic's docs. You still validate the final message yourself.">Claude Managed Agents</button>
+<button data-k="c" data-why="Right. It's in the Antigravity agent's limitations, so your code must parse and validate the text.">Gemini Managed Agents</button>
+<button data-k="d" data-why="One of the three states this limitation explicitly.">None of them</button></div></div>
+
+<div class="quiz" data-answer="b"><p class="q">3. The worker has a 150 s wall clock and a managed run may take minutes. What should the seam do?</p><div class="opts">
+<button data-k="a" data-why="The run would be cut off at 150 s, and a non-streamed abort can still be billed (ticket 12).">Wait inside the worker call</button>
+<button data-k="b" data-why="Right. Record the runRef on the job, and let a webhook or the pg_cron tick collect, validate and send.">Return pending, collect result later</button>
+<button data-k="c" data-why="The free plan caps the wall clock at 150 s. Even the paid plan only allows 400 s.">Raise the Edge timeout limit</button>
+<button data-k="d" data-why="Lessons are sent as finished, validated messages, and streaming doesn't lift the wall-clock limit.">Stream partial Lessons to Telegram</button></div></div>
+
+<div class="quiz" data-answer="b"><p class="q">4. A Claude Managed Agents run calls your custom tool <code>readLessonLines</code>. What happens?</p><div class="opts">
+<button data-k="a" data-why="Custom tools are executed by your application, not in the sandbox.">The sandbox queries Postgres directly</button>
+<button data-k="b" data-why="Right. The session emits agent.custom_tool_use and waits idle for user.custom_tool_result, so every call needs your code to answer.">Session idles until you reply</button>
+<button data-k="c" data-why="Webhooks only notify you of state changes. They don't execute tools.">Anthropic calls your database webhook</button>
+<button data-k="d" data-why="It doesn't fail. It waits for your answer, which is worse if nothing is listening.">The tool call fails silently</button></div></div>
+
+<div class="quiz" data-answer="b"><p class="q">5. Which is the best first job for a managed agent in this project?</p><div class="opts">
+<button data-k="a" data-why="It needs a placeholder in about 2 s. That calls for a small plain call.">Reply classification fast path</button>
+<button data-k="b" data-why="Right. It needs a sandbox with git, it can be slow, and it sits outside the Thread's latency path.">Project digest refresh job</button>
+<button data-k="c" data-why="Toasts and button edits are pure rules inside the webhook, with no LLM call.">Reaction toast button edits</button>
+<button data-k="d" data-why="All inputs are known up front, so a plain JSON call is enough.">Answer feedback grading call</button></div></div>
+
+<div class="callout">
+  <p><strong>Take back to your tickets.</strong> (1) Ticket 13: add a <em>pending → collect</em> result to the seam, and list which generations may go agentic (Lesson, code-aware Follow-up). (2) Map: decide whether the OpenRouter-only rule holds after the MVP, because that decides whether managed agents are allowed in the bot at all. (3) A possible new ticket: a managed-agent Project digest refresh.</p>
+</div>
+
+<div class="source"><strong>Read next (primary source):</strong> <a href="https://developers.googleblog.com/why-we-built-adk-20/">"Why we built ADK 2.0"</a> (Google Developers Blog), then <a href="https://adk.dev/graphs/">ADK graph workflows</a> for the <code>node()</code> and edges syntax.</div>
+
+<p class="note">Questions, or a platform fact that looks out of date? Ask me, your teacher. To test these ideas with practitioners, try the <a href="https://discuss.ai.google.dev/">Google AI Developers Forum</a> or <a href="https://github.com/google/adk-js/discussions">adk-js Discussions</a>.</p>
+
+<nav class="pager"><a href="0001-where-an-agent-earns-its-place-in-a-thread.html">← Lesson 1 · Where an agent earns its place</a><a href="0003-when-the-agent-owns-memory.html">Lesson 3 · When the agent owns memory →</a></nav>
+</main>
+<script src="../assets/quiz.js"></script>
+</body>
+</html>

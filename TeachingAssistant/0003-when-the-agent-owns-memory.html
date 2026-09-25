@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>When Agents Own Memory</title>
+<link rel="stylesheet" href="../assets/course.css">
+</head>
+<body>
+<main>
+<header class="lesson">
+  <div class="kicker">Lesson 3 · Agentic generation for the Teaching Assistant</div>
+  <h1>When the agent owns memory: harness, session, memory</h1>
+  <p class="lede">New assumptions: the agent may write memory, and Postgres keeps only what is needed to run the agents. This lesson shows what still has to stay in Postgres, where a Thread lives now, and where Google's Memory Bank fits. About 15 minutes.</p>
+</header>
+
+<details class="recall"><summary>Warm-up: from memory, why did Lesson 1 recommend one agent session per job?</summary>
+<p><em>Generators never wrote memory, Postgres was the only source of truth, and no platform could reliably keep a session through an overnight Reaction. The first two premises are now withdrawn, and the third turned out to be wrong for ADK (see below). So the rule is open again.</em></p></details>
+
+<h2>What changed</h2>
+<ul>
+  <li><strong>Agents may write memory.</strong> This reverses "generators never write memory" from <a href="../.scratch/teaching-assistant/issues/07-learner-memory.md">ticket 07</a>.</li>
+  <li><strong>Thread history may leave your schema.</strong> Postgres keeps only the <em>harness</em>: what your own code needs to run the agents.</li>
+  <li><strong>Correction to Lessons 1–2.</strong> The ADK docs list only an in-memory session service for TypeScript, but the published <code>@google/adk</code> 2.1.0 package includes <code>DatabaseSessionService</code>, which accepts <code>postgres://</code> URIs, plus <code>VertexAiSessionService</code> and <code>VertexAiMemoryBankService</code>.<sup class="cite"><a href="https://github.com/google/adk-js/tree/main/core/src/sessions">[1]</a></sup> An ADK session can therefore live durably in your Supabase Postgres.</li>
+</ul>
+
+<h2>Three layers of state</h2>
+<div class="table-wrap"><table>
+<thead><tr><th>Layer</th><th>Holds</th><th>Who reads and writes it</th><th>Lives in</th></tr></thead>
+<tbody>
+<tr><td><strong>Harness</strong></td><td>Anything your code must know <em>before or without</em> asking a model</td><td>Your code, deterministically</td><td>Postgres (thin)</td></tr>
+<tr><td><strong>Session</strong></td><td>One Thread's transcript: Lessons, Replies, Reactions sent as events, tool calls</td><td>The agent runtime</td><td>ADK session table in Supabase, a Claude Managed Agents session, or a Gemini interaction chain</td></tr>
+<tr><td><strong>Long-term memory</strong></td><td>What lasts across Threads: what was hard, preferences (Notes), Topic recaps</td><td>The agent (and, optionally, your code)</td><td>Memory Bank, Claude Managed Agents memory stores, or your own memory tool</td></tr>
+</tbody></table></div>
+<div class="callout key">
+  <p><strong>The harness test.</strong> Keep a fact in Postgres if your code needs it <em>deterministically</em>: to route a Telegram update, draw the right buttons, deduplicate, schedule, cap spend, or choose which Thread to start. A model's memory is probabilistic and eventually consistent. Button rows and idempotency can't depend on it.</p>
+</div>
+<p>For this bot the harness is roughly: Telegram <code>message_id</code> ↔ Thread/session and message kind (so a reply or a button tap finds its target), the Topic's latest Lesson (only its Simple/Proceed/Difficult taps take effect; a tap on an older Lesson gets a toast), <code>update_id</code> deduplication, jobs and <code>runRef</code>s, the published Backlog copy, which Topic is in progress (and whether it is finished or paused), and the usage and spend log. Everything else is a candidate to move.</p>
+
+<h2>A Thread can now be one session</h2>
+<div class="timeline" aria-label="Session-per-Thread lifecycle">
+  <span class="ev job">/next → create session</span><span class="arrow">→</span>
+  <span class="ev">Lesson</span><span class="arrow">→</span>
+  <span class="ev">tap / Reply = new event</span><span class="arrow">→</span>
+  <span class="ev">idle for hours, nothing running</span><span class="arrow">→</span>
+  <span class="ev">tap = new event</span><span class="arrow">→</span>
+  <span class="ev job">/next → newer Thread; this session stays resumable</span>
+</div>
+<p>The Thread <em>is</em> the session. A Reaction or Reply is appended as a new event and runs one turn, and nothing runs in between. The overnight gap is harmless because the session is stored, not held in a running process. Threads are never closed (ticket 12, 2026-09-17): older Threads still accept Replies, so <strong>a session must stay resumable indefinitely</strong>, and there is no "close" moment for writing memory. Write memories incrementally instead: after each turn from that turn's events (the quickstart recommends <code>add_events_to_memory</code> for incremental processing), or when a newer Thread starts. Two Lessons may be generated at once, but they belong to different sessions, and the Topic level stays a harness rule, so concurrent turns don't conflict.</p>
+<div class="table-wrap"><table>
+<thead><tr><th></th><th>ADK 2.1 (TS) on Cloud Run</th><th>Claude Managed Agents</th><th>Gemini Antigravity</th></tr></thead>
+<tbody>
+<tr><td>Thread → session</td><td><code>DatabaseSessionService</code> on Supabase Postgres; each event is one runner call</td><td>One session per Thread; it sits <em>idle</em> between events (runtime is billed on active time). How long an idle session stays resumable is unverified<sup class="cite"><a href="https://platform.claude.com/docs/en/managed-agents/sessions.md">[2]</a></sup></td><td>A <code>previous_interaction_id</code> chain plus <code>environment_id</code>; environments are kept 7 days after last activity<sup class="cite"><a href="https://ai.google.dev/gemini-api/docs/agents">[3]</a></sup>, so a Reply to an older Thread may need a fresh interaction seeded from memory</td></tr>
+<tr><td>Long-term memory</td><td><code>VertexAiMemoryBankService</code>, or your own tool</td><td>Memory stores: files the agent reads and writes, versioned and redactable<sup class="cite"><a href="https://platform.claude.com/docs/en/managed-agents/overview.md">[4]</a></sup></td><td>No memory service documented; you could call Memory Bank over REST</td></tr>
+<tr><td>Keeps OpenRouter</td><td>For generation, yes. Memory Bank extraction runs on Gemini</td><td>No</td><td>No</td></tr>
+</tbody></table></div>
+<p class="note">One cost to watch with session-per-Thread: the context grows with each turn, and every turn re-sends it. That is fine for a Thread of a few Lessons. Keep Threads short, and let <code>/next</code> start fresh.</p>
+
+<h2>Your question: is Memory Bank relevant?</h2>
+<p><strong>Yes. It is the managed form of the "agent writes memory" layer.</strong> What it does, per Google's docs:<sup class="cite"><a href="https://docs.cloud.google.com/gemini-enterprise-agent-platform/scale/memory-bank">[5]</a></sup></p>
+<ul>
+  <li><strong>It extracts and consolidates memories</strong> from session events. New facts are merged into existing memories rather than appended, and you can steer extraction with custom topics and few-shot examples.</li>
+  <li><strong>It retrieves by similarity</strong> within a <em>scope</em>. The ADK quickstart uses <code>{user_id, app_name}</code>.<sup class="cite"><a href="https://docs.cloud.google.com/gemini-enterprise-agent-platform/scale/memory-bank/adk-quickstart">[6]</a></sup></li>
+  <li><strong>It keeps revisions and supports TTL</strong>, so you can see how a memory changed, and stale memories expire.</li>
+  <li><strong>It accepts direct writes</strong> (<code>CreateMemory</code>) and event ingestion. A classified Note could be written directly instead of being extracted.</li>
+  <li><strong>ADK integration:</strong> <code>PreloadMemoryTool</code> loads memories every turn. <code>LoadMemoryTool</code> loads them when the model decides to, and a callback's <code>add_session_to_memory()</code> writes them. The agent can run on Cloud Run (<code>--memory_service_uri=agentengine://ID</code>). The quickstart shows only Python, but the TS package ships the service class.</li>
+</ul>
+<h3>How it maps onto your project</h3>
+<div class="table-wrap"><table>
+<thead><tr><th>Today (ticket 07)</th><th>With Memory Bank</th></tr></thead>
+<tbody>
+<tr><td>Append-only raw events kept forever</td><td>Session events, plus memory revisions as the audit trail</td></tr>
+<tr><td>Topic recap written on finish, pause or retire</td><td>Incremental <code>add_events_to_memory</code> after each turn, with a custom "difficulties / level" topic</td></tr>
+<tr><td>Notes with Topic or all-Topics scope</td><td>Direct <code>CreateMemory</code> with a Note topic; scope carried in the memory</td></tr>
+<tr><td>Fixed context for each call (last 30 Lesson lines…)</td><td>Similarity retrieval chosen by the agent</td></tr>
+<tr><td><code>psql</code> readback for Strategy Sessions</td><td><strong>Lost.</strong> The toolkit would read memories through the API instead</td></tr>
+</tbody></table></div>
+<h3>What it costs you</h3>
+<ul>
+  <li><strong>Money:</strong> storage at $0.30/GiB-month, and $0.085 per 3M reads or per 1M writes, billed since 2026-09-01. Gemini tokens for extraction and embeddings are billed separately.<sup class="cite"><a href="https://cloud.google.com/products/gemini-enterprise-agent-platform/pricing">[7]</a></sup> For one learner that comes to cents.</li>
+  <li><strong>Setup:</strong> a GCP project with billing, and an Agent Platform (Agent Engine) instance whose id scopes the memories, even if the agent itself runs elsewhere.</li>
+  <li><strong>Your rules:</strong> extraction runs on Google's model, so OpenRouter-only no longer covers memory. Consolidation is non-deterministic, so "Answer outcomes never move the level" has to stay a harness rule in your code. Google also warns about <em>memory poisoning</em>, where false facts get stored. A learner's Reply is untrusted input.</li>
+</ul>
+
+<h2>Practice: which layer?</h2>
+<p><span class="score"></span></p>
+<div class="quiz" data-answer="a"><p class="q">1. The Telegram message_id of the Topic's latest Lesson, so a Simple/Proceed/Difficult tap is either applied or answered with a toast.</p><div class="opts">
+<button data-k="a" data-why="Your code decides within 1–2 s whether the tap counts, without asking any model. It is a routing fact, so it belongs to the harness.">Harness Postgres table</button>
+<button data-k="b" data-why="The session knows the text, but your webhook needs the id deterministically within 1–2 s.">Agent session events</button>
+<button data-k="c" data-why="Similarity search can't reliably return an exact id, and this fact has no value beyond the Thread.">Long-term memory store</button></div></div>
+<div class="quiz" data-answer="b"><p class="q">2. The full text of the Thread's three Lessons and the learner's Instruction, needed for the next Follow-up.</p><div class="opts">
+<button data-k="a" data-why="Under the new assumptions this history no longer has to be in your schema.">Harness Postgres table</button>
+<button data-k="b" data-why="This is the Thread transcript. With one session per Thread the runtime replays it on each turn.">Agent session events</button>
+<button data-k="c" data-why="It only matters inside this Thread. Only what outlasts the Thread should become memory.">Long-term memory store</button></div></div>
+<div class="quiz" data-answer="c"><p class="q">3. "Struggles with idempotency; an analogy to insurance claims numbers helped", learned across several Threads.</p><div class="opts">
+<button data-k="a" data-why="Your code never branches on this. Only the model uses it.">Harness Postgres table</button>
+<button data-k="b" data-why="A session belongs to one Thread, and this fact must reach every future Thread.">Agent session events</button>
+<button data-k="c" data-why="A consolidated, cross-Thread fact about the learner: exactly what Memory Bank extracts from session events.">Long-term memory store</button></div></div>
+<div class="quiz" data-answer="a"><p class="q">4. Which Topic is in progress, so the 07:00 run knows what to start.</p><div class="opts">
+<button data-k="a" data-why="The scheduler must decide before any agent runs, and &quot;finish a Topic first&quot; is a deterministic rule.">Harness Postgres table</button>
+<button data-k="b" data-why="No session exists yet at 07:00. Creating one is exactly what this fact decides.">Agent session events</button>
+<button data-k="c" data-why="A probabilistic lookup could start the wrong Topic, and the plan state is published from YAML anyway.">Long-term memory store</button></div></div>
+<div class="quiz" data-answer="a"><p class="q">5. A pending Lesson generation's runRef and attempt count.</p><div class="opts">
+<button data-k="a" data-why="Job control is the core of the harness: retries, timeouts and collection all depend on it.">Harness Postgres table</button>
+<button data-k="b" data-why="The session doesn't know about your retries or the Edge Function's time limit.">Agent session events</button>
+<button data-k="c" data-why="Operational data doesn't belong in learner memory, and it would only pollute retrieval.">Long-term memory store</button></div></div>
+
+<div class="callout">
+  <p><strong>Take back to your tickets.</strong> (1) This reverses a decision in ticket 07 and is hard to undo once memory lives in a vendor store, so it deserves an <strong>ADR</strong>: "agents own session and memory; Postgres is the harness". (2) Ticket 10 (data model) shrinks to the harness tables. (3) Ticket 08 needs a new readback path, since Strategy Sessions would read Memory Bank or memory stores, not <code>psql</code> views. (4) The map's OpenRouter-only preference needs an exception for memory extraction if you pick Memory Bank.</p>
+</div>
+
+<div class="source"><strong>Read next (primary source):</strong> <a href="https://docs.cloud.google.com/gemini-enterprise-agent-platform/scale/memory-bank">Agent Platform Memory Bank overview</a>, then the <a href="https://docs.cloud.google.com/gemini-enterprise-agent-platform/scale/memory-bank/adk-quickstart">ADK quickstart</a> you found. For the Anthropic equivalent, read the memory-stores section of the <a href="https://platform.claude.com/docs/en/managed-agents/overview.md">Managed Agents docs</a>.</div>
+
+<p class="note">Unsure where some piece of state belongs? Ask me, your teacher, with the concrete item, and we'll run the harness test on it together.</p>
+
+<nav class="pager"><a href="0002-three-platforms-one-seam.html">← Lesson 2 · Three platforms, one seam</a><span>Reference: <a href="../reference/agent-surfaces-cheatsheet.html">Agent surfaces cheat sheet</a></span></nav>
+</main>
+<script src="../assets/quiz.js"></script>
+</body>
+</html>
