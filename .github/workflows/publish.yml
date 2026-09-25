@@ -1,0 +1,135 @@
+# Reusable workflow, lives in the PUBLIC repo alexplusplus/teach.
+# Private repos call it (see caller example). It publishes the HTML pages in
+# `pages_dir` plus every local file they link to (CSS, JS, images, fonts,
+# other pages), found by following href/src/url() links recursively.
+# Files keep their repo-relative paths, so ../assets/... links still resolve.
+#
+# Never published: hidden paths (.scratch/, .github/ ...), links leaving the
+# repo, and file types outside `extensions` (so .md notes stay private).
+
+name: Publish pages (reusable)
+
+on:
+  workflow_call:
+    inputs:
+      pages_dir:
+        description: Folder(s) with the HTML pages, space-separated, relative to repo root
+        type: string
+        required: true
+      site_folder:
+        description: Folder name in the public repo (default = repo name)
+        type: string
+        default: ''
+      target_repo:
+        type: string
+        default: alexplusplus/teach
+      extensions:
+        description: File types that may be published
+        type: string
+        default: html htm css js mjs json svg png jpg jpeg gif webp avif ico woff woff2 ttf otf mp3 mp4 webm pdf
+    secrets:
+      PAGES_TOKEN:
+        required: true
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    concurrency: publish-${{ github.repository }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          path: src
+
+      - uses: actions/checkout@v5
+        with:
+          repository: ${{ inputs.target_repo }}
+          token: ${{ secrets.PAGES_TOKEN }}
+          path: site
+
+      - name: Collect pages and linked files
+        env:
+          PAGES_DIR: ${{ inputs.pages_dir }}
+          EXTENSIONS: ${{ inputs.extensions }}
+          SITE_FOLDER: ${{ inputs.site_folder }}
+        run: |
+          NAME="${SITE_FOLDER:-${GITHUB_REPOSITORY#*/}}"
+          rm -rf "site/$NAME"
+          cd src
+          OUT="../site/$NAME" python3 - <<'PY'
+          import os, re, shutil, posixpath
+          from collections import deque
+
+          out = os.environ["OUT"]
+          exts = set(os.environ["EXTENSIONS"].lower().split())
+          ref_re = re.compile(
+              r"""(?:href|src|poster)\s*=\s*["']([^"']+)["']"""
+              r"""|url\(\s*["']?([^"')]+)["']?\s*\)""", re.I)
+          external = re.compile(r"^([a-z][a-z0-9+.-]*:|//|#)", re.I)
+
+          def ext(p):
+              b = posixpath.basename(p)
+              return b.rsplit(".", 1)[-1].lower() if "." in b else ""
+
+          queue = deque()
+          for d in os.environ["PAGES_DIR"].split():
+              d = posixpath.normpath(d)
+              if not os.path.isdir(d):
+                  print(f"::error::pages_dir '{d}' not found"); raise SystemExit(1)
+              for root, _, files in os.walk(d):
+                  queue.extend(posixpath.join(root, f) for f in files
+                               if ext(f) in ("html", "htm"))
+
+          seen, skipped, missing = set(), set(), set()
+          while queue:
+              p = queue.popleft()
+              if p in seen:
+                  continue
+              seen.add(p)
+              if ext(p) not in ("html", "htm", "css"):
+                  continue
+              text = open(p, encoding="utf-8", errors="ignore").read()
+              for m in ref_re.finditer(text):
+                  ref = (m.group(1) or m.group(2)).strip()
+                  if not ref or external.match(ref):
+                      continue
+                  ref = re.split(r"[?#]", ref)[0]
+                  if not ref:
+                      continue
+                  if ref.startswith("/"):
+                      missing.add(f"{p}: root-absolute '{ref}' won't resolve on the site")
+                      continue
+                  dep = posixpath.normpath(posixpath.join(posixpath.dirname(p), ref))
+                  if dep.startswith("..") or any(s.startswith(".") for s in dep.split("/")):
+                      skipped.add(dep); continue
+                  if os.path.isdir(dep):
+                      dep = posixpath.join(dep, "index.html")
+                  if ext(dep) not in exts:
+                      skipped.add(dep); continue
+                  if not os.path.isfile(dep):
+                      missing.add(f"{p}: '{ref}' not found"); continue
+                  queue.append(dep)
+
+          for p in sorted(seen):
+              dst = posixpath.join(out, p)
+              os.makedirs(posixpath.dirname(dst), exist_ok=True)
+              shutil.copy2(p, dst)
+          print(f"Published {len(seen)} files:", *sorted(seen), sep="\n  ")
+          if skipped:
+              print("Not published (private or disallowed type):", *sorted(skipped), sep="\n  ")
+          for m in sorted(missing):
+              print(f"::warning::{m}")
+          PY
+
+      - name: Push
+        working-directory: site
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898283+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git diff --cached --quiet && { echo "No changes"; exit 0; }
+          git commit -m "Update ${GITHUB_REPOSITORY#*/} from ${GITHUB_SHA::7}"
+          for i in 1 2 3 4 5; do
+            git pull --rebase --quiet && git push && exit 0
+            sleep $((i * 5))
+          done
+          exit 1
