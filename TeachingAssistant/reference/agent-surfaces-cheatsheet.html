@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Agent Surfaces Cheat Sheet</title>
+<link rel="stylesheet" href="../assets/course.css">
+</head>
+<body>
+<main>
+<header class="lesson">
+  <div class="kicker">Reference · Teaching Assistant</div>
+  <h1>Agent surfaces cheat sheet</h1>
+  <p class="lede">Which rung each generation belongs on, where state lives, and how the three platforms compare. Facts checked 2026-09-16 (updated the same day for the "agents own memory" assumption).</p>
+</header>
+
+<h2>1 · The ladder and the climbing test</h2>
+<ol class="ladder">
+  <li><b>Plain LLM call</b><span>Code assembles the inputs, and one call returns a fixed shape.</span></li>
+  <li><b>Workflow / ADK 2.0 graph</b><span>Code fixes the order of steps; nodes are functions, LLM calls or agents.</span></li>
+  <li><b>Agent with tools</b><span>The model decides what to fetch next.</span></li>
+  <li><b>Managed agent session</b><span>A vendor hosts the loop, a sandbox and session state.</span></li>
+</ol>
+<p><strong>Climb only if</strong> the model must decide what to fetch mid-task · the job can wait · the gain is worth several times the tokens (~$0.01 plain vs ~$0.03–0.15 agent per Lesson).</p>
+
+<h2>2 · Where state lives (depends on your memory decision)</h2>
+<div class="table-wrap"><table>
+<thead><tr><th>Assumption</th><th>Rule</th></tr></thead>
+<tbody>
+<tr><td>Original: generators never write memory; Postgres is the record</td><td><strong>Session-per-job.</strong> The agent is stateless, reads Postgres through tools or a bundle, and returns fixed shapes.</td></tr>
+<tr><td>Current (2026-09-16): agents may write memory; Postgres is only the harness</td><td><strong>Session-per-Thread.</strong> <code>/next</code> or the morning run creates a session. Taps and Replies are new events. Threads are never closed (2026-09-17), so sessions stay resumable indefinitely, and memories are written incrementally after each turn or when a newer Thread starts.</td></tr>
+</tbody></table></div>
+<p><strong>Harness test:</strong> keep it in Postgres if your code needs it deterministically (routing a Telegram update, the Topic's latest Lesson for progression taps, <code>update_id</code> dedup, jobs and <code>runRef</code>, the Topic in progress, the Backlog copy, spend). <strong>Session</strong> = the open Thread's transcript. <strong>Long-term memory</strong> = facts that outlast a Thread (what was hard, Notes, recaps).</p>
+
+<h2>2b · Memory services</h2>
+<div class="table-wrap"><table>
+<thead><tr><th></th><th>Memory Bank (Google Agent Platform)</th><th>Claude Managed Agents memory stores</th></tr></thead>
+<tbody>
+<tr><td>Model</td><td>LLM extraction plus consolidation; similarity retrieval by scope</td><td>Files the agent reads and writes in a mounted directory</td></tr>
+<tr><td>Writes</td><td>From session events (<code>add_session_to_memory</code>), event ingestion, or direct <code>CreateMemory</code></td><td>Agent file edits; API seeding</td></tr>
+<tr><td>Audit</td><td>Revisions; TTL</td><td>Immutable versions; redact</td></tr>
+<tr><td>ADK TS</td><td><code>VertexAiMemoryBankService</code> (in the 2.1.0 package; docs show only Python); <code>PreloadMemoryTool</code> / <code>LoadMemoryTool</code></td><td>n/a</td></tr>
+<tr><td>Cost</td><td>$0.30/GiB-month storage; $0.085 per 3M reads or 1M writes; Gemini tokens billed separately (since 2026-09-01)</td><td>Part of the Managed Agents session costs</td></tr>
+<tr><td>Catch</td><td>Needs a GCP project and an Agent Engine id; extraction runs on Gemini; memory-poisoning risk; <code>psql</code> readback lost</td><td>Claude only</td></tr>
+</tbody></table></div>
+<h2>3 · Placement for this project</h2>
+<div class="table-wrap"><table>
+<thead><tr><th>Generation</th><th>Rung</th><th>Reason</th></tr></thead>
+<tbody>
+<tr><td>Reply classify</td><td>Plain</td><td>~2 s placeholder; fixed inputs</td></tr>
+<tr><td>Exercise · Answer feedback · Topic recap</td><td>Plain</td><td>All inputs known</td></tr>
+<tr><td>Follow-up (plain Instruction)</td><td>Plain</td><td>Thread context is already loaded</td></tr>
+<tr><td>Follow-up that needs Project code</td><td>Agent (node)</td><td>The model picks which files to read</td></tr>
+<tr><td>Lesson (select → write)</td><td>ADK graph + agent select node</td><td>Fixed order; exploration only in select</td></tr>
+<tr><td>Project digest refresh</td><td>Managed agent</td><td>Sandbox with git; slow is fine; outside the Thread</td></tr>
+</tbody></table></div>
+
+<h2>4 · Platforms</h2>
+<div class="table-wrap"><table>
+<thead><tr><th></th><th>ADK 2.0 TS</th><th>Claude Managed Agents</th><th>Gemini Antigravity</th></tr></thead>
+<tbody>
+<tr><td>Status</td><td>GA 2026-08-21</td><td>Beta</td><td>Public preview</td></tr>
+<tr><td>Hosting</td><td>You (Cloud Run)</td><td>Anthropic</td><td>Google</td></tr>
+<tr><td>Models</td><td>Gemini; OpenRouter via custom <code>BaseLlm</code></td><td>Claude only</td><td>Gemini 3.5–3.8 Flash only</td></tr>
+<tr><td>OpenRouter-only rule</td><td>Kept</td><td>Broken</td><td>Broken</td></tr>
+<tr><td>Output shape</td><td>zod <code>outputSchema</code></td><td>Validate yourself</td><td>No structured outputs</td></tr>
+<tr><td>Custom tools</td><td>In your process</td><td><code>agent.custom_tool_use</code> → idle → <code>user.custom_tool_result</code></td><td><code>requires_action</code> → <code>create</code> with <code>function_result</code></td></tr>
+<tr><td>Long runs</td><td>Your request</td><td>SSE stream / webhooks</td><td><code>background: true</code> + poll</td></tr>
+<tr><td>State</td><td>TS 2.1: in-memory, Postgres (<code>DatabaseSessionService</code>), or Agent Platform sessions</td><td>Sessions + memory stores</td><td><code>previous_interaction_id</code>; environments kept 7 days</td></tr>
+<tr><td>Extra cost</td><td>Cloud Run (free tier likely)</td><td>$0.08 per active hour; budget cap per session</td><td>Sandbox compute free during preview</td></tr>
+</tbody></table></div>
+
+<h2>5 · Seam contract (agent-ready)</h2>
+<pre><code>generate(kind, jobId, bundle) → { done, result } | { pending, runRef }
+collect(runRef)               → { done, result } | { pending } | { failed }</code></pre>
+<p>The 150 s Edge wall clock makes <em>pending → collect</em> mandatory for agent engines. Collect through a webhook (Claude Managed Agents, or a Cloud Run callback) or a pg_cron poll (Antigravity). For managed runs, mount the context bundle as files instead of custom tools: each custom-tool call is a round trip through your code.</p>
+
+<h2>Sources</h2>
+<p class="note"><a href="https://www.anthropic.com/engineering/building-effective-agents">Building effective agents</a> · <a href="https://developers.googleblog.com/why-we-built-adk-20/">Why we built ADK 2.0</a> · <a href="https://adk.dev/2.0/">ADK 2.0</a> · <a href="https://adk.dev/graphs/">ADK graphs</a> · <a href="https://adk.dev/graphs/human-input/">ADK human input</a> · <a href="https://adk.dev/sessions/session/">ADK sessions</a> · <a href="https://platform.claude.com/docs/en/managed-agents/overview.md">Claude Managed Agents</a> · <a href="https://ai.google.dev/gemini-api/docs/agents">Gemini Managed Agents</a> · <a href="https://ai.google.dev/gemini-api/docs/antigravity-agent">Antigravity agent</a> · <a href="https://ai.google.dev/gemini-api/docs/custom-agents">Custom agents</a> · <a href="https://docs.cloud.google.com/gemini-enterprise-agent-platform/scale/memory-bank">Memory Bank</a> · <a href="https://docs.cloud.google.com/gemini-enterprise-agent-platform/scale/memory-bank/adk-quickstart">Memory Bank + ADK</a> · <a href="https://github.com/google/adk-js/tree/main/core/src">adk-js source</a></p>
+
+<nav class="pager"><a href="../lessons/0001-where-an-agent-earns-its-place-in-a-thread.html">Lesson 1</a><a href="../lessons/0002-three-platforms-one-seam.html">Lesson 2</a><a href="../lessons/0003-when-the-agent-owns-memory.html">Lesson 3</a></nav>
+</main>
+</body>
+</html>
